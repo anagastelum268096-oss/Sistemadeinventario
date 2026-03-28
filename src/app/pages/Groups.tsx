@@ -171,8 +171,74 @@ export function Groups() {
   const handleImportGroups = async (file: File) => {
     try {
       const importedGroups = await importGroups(file);
-      setGroups([...groups, ...importedGroups]);
-      toast.success(`${importedGroups.length} grupos importados correctamente`);
+      const newTeachers: Person[] = [];
+      const processedGroups: Group[] = [];
+      
+      // Procesar cada grupo importado
+      for (const group of importedGroups) {
+        const groupData = group as any;
+        const teacherName = groupData.teacherName;
+        let teacherId = '';
+        
+        if (teacherName) {
+          // Buscar si el maestro ya existe (por nombre)
+          const existingTeacher = teachers.find(
+            (t) => t.name.toLowerCase() === teacherName.toLowerCase()
+          );
+          
+          if (existingTeacher) {
+            teacherId = existingTeacher.id;
+          } else {
+            // Verificar si ya lo creamos en esta importación
+            const newTeacher = newTeachers.find(
+              (t) => t.name.toLowerCase() === teacherName.toLowerCase()
+            );
+            
+            if (newTeacher) {
+              teacherId = newTeacher.id;
+            } else {
+              // Crear nuevo maestro
+              const teacher: Person = {
+                id: `t${Date.now()}-${newTeachers.length}`,
+                name: teacherName,
+                email: '',
+                phone: '',
+                role: 'teacher',
+              };
+              newTeachers.push(teacher);
+              teacherId = teacher.id;
+            }
+          }
+        }
+        
+        // Crear el grupo con el teacherId correcto
+        processedGroups.push({
+          id: group.id,
+          name: group.name,
+          type: group.type,
+          teacherId: teacherId,
+          studentIds: [],
+          color: group.color,
+        });
+      }
+      
+      // Actualizar maestros si se crearon nuevos
+      if (newTeachers.length > 0) {
+        const updatedTeachers = [...teachers, ...newTeachers];
+        setTeachers(updatedTeachers);
+        localStorage.setItem('teachers', JSON.stringify(updatedTeachers));
+      }
+      
+      // Actualizar grupos
+      const updatedGroups = [...groups, ...processedGroups];
+      setGroups(updatedGroups);
+      localStorage.setItem('groups', JSON.stringify(updatedGroups));
+      
+      toast.success(
+        `${processedGroups.length} grupos importados correctamente${
+          newTeachers.length > 0 ? ` (${newTeachers.length} maestros creados)` : ''
+        }`
+      );
     } catch (error) {
       toast.error('Error al importar el archivo. Verifica el formato.');
       console.error(error);
@@ -182,7 +248,9 @@ export function Groups() {
   const handleImportTeachers = async (file: File) => {
     try {
       const importedTeachers = await importTeachers(file);
-      setTeachers([...teachers, ...importedTeachers]);
+      const updatedTeachers = [...teachers, ...importedTeachers];
+      setTeachers(updatedTeachers);
+      localStorage.setItem('teachers', JSON.stringify(updatedTeachers));
       toast.success(`${importedTeachers.length} maestros importados correctamente`);
     } catch (error) {
       toast.error('Error al importar el archivo. Verifica el formato.');
@@ -193,7 +261,9 @@ export function Groups() {
   const handleImportStudents = async (file: File) => {
     try {
       const importedStudents = await importStudents(file);
-      setStudents([...students, ...importedStudents]);
+      const updatedStudents = [...students, ...importedStudents];
+      setStudents(updatedStudents);
+      localStorage.setItem('students', JSON.stringify(updatedStudents));
       toast.success(`${importedStudents.length} alumnos importados correctamente`);
     } catch (error) {
       toast.error('Error al importar el archivo. Verifica el formato.');
@@ -217,14 +287,14 @@ export function Groups() {
                 <p className="text-sm text-gray-500">Gestiona grupos, maestros y alumnos</p>
               </div>
             </div>
-            <div className="flex items-center gap-2 w-full sm:w-auto">
+            <div className="flex items-center gap-2 w-full sm:w-auto flex-wrap">
               <button
                 onClick={() => exportGroupsToExcel(groups, [...teachers, ...students])}
                 className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex-1 sm:flex-initial justify-center"
               >
                 <Download className="size-5" />
                 <span className="hidden lg:inline">Exportar Grupos</span>
-                <span className="lg:hidden">Grupos</span>
+                <span className="lg:hidden">Exp. Grupos</span>
               </button>
               <button
                 onClick={() => exportPeopleToExcel([...teachers, ...students])}
@@ -232,14 +302,14 @@ export function Groups() {
               >
                 <Download className="size-5" />
                 <span className="hidden lg:inline">Exportar Personas</span>
-                <span className="lg:hidden">Personas</span>
+                <span className="lg:hidden">Exp. Personas</span>
               </button>
               {isAdmin() && (
                 <>
                   <ImportButton
                     onImport={handleImportGroups}
                     label="Importar Grupos"
-                    className="hidden lg:flex"
+                    className="flex-1 sm:flex-initial"
                   />
                   <button
                     onClick={() => setAddGroupDialogOpen(true)}

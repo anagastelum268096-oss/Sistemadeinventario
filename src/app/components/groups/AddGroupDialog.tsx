@@ -1,6 +1,6 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { X } from 'lucide-react';
-import { Group, Person } from '@/app/types';
+import { Group, Person, GroupType } from '@/app/types';
 import { Dialog, DialogContent, DialogTitle, DialogDescription } from '@/app/components/ui/dialog';
 
 interface AddGroupDialogProps {
@@ -10,7 +10,6 @@ interface AddGroupDialogProps {
   teachers: Person[];
 }
 
-const groupTypes = ['Orquesta', 'Banda', 'Coro', 'Ensamble', 'Grupo de Cámara'];
 const colors = [
   { name: 'Púrpura', value: '#8B5CF6' },
   { name: 'Azul', value: '#3B82F6' },
@@ -23,12 +22,31 @@ const colors = [
 ];
 
 export function AddGroupDialog({ open, onOpenChange, onAddGroup, teachers }: AddGroupDialogProps) {
+  const [groupTypes, setGroupTypes] = useState<GroupType[]>([]);
   const [formData, setFormData] = useState({
     name: '',
-    type: groupTypes[0],
+    type: '',
     teacherId: teachers[0]?.id || '',
     color: colors[0].value,
   });
+
+  // Cargar tipos de grupo desde localStorage
+  useEffect(() => {
+    const savedGroupTypes = localStorage.getItem('groupTypes');
+    if (savedGroupTypes) {
+      const types = JSON.parse(savedGroupTypes);
+      setGroupTypes(types);
+      if (types.length > 0 && !formData.type) {
+        setFormData(prev => ({ ...prev, type: types[0].name }));
+      }
+    }
+  }, [open]); // Recargar cuando se abre el diálogo
+
+  useEffect(() => {
+    if (teachers.length > 0 && !formData.teacherId) {
+      setFormData(prev => ({ ...prev, teacherId: teachers[0].id }));
+    }
+  }, [teachers]);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -38,7 +56,7 @@ export function AddGroupDialog({ open, onOpenChange, onAddGroup, teachers }: Add
     });
     setFormData({
       name: '',
-      type: groupTypes[0],
+      type: groupTypes[0]?.name || '',
       teacherId: teachers[0]?.id || '',
       color: colors[0].value,
     });
@@ -78,10 +96,19 @@ export function AddGroupDialog({ open, onOpenChange, onAddGroup, teachers }: Add
               onChange={(e) => setFormData({ ...formData, type: e.target.value })}
               className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500"
             >
-              {groupTypes.map((type) => (
-                <option key={type} value={type}>{type}</option>
-              ))}
+              {groupTypes.length === 0 ? (
+                <option value="">No hay tipos de grupo configurados</option>
+              ) : (
+                groupTypes.map((type) => (
+                  <option key={type.id} value={type.name}>{type.name}</option>
+                ))
+              )}
             </select>
+            {groupTypes.length === 0 && (
+              <p className="text-xs text-amber-600 mt-1">
+                Configura tipos de grupo en el apartado de Categorías
+              </p>
+            )}
           </div>
 
           <div>

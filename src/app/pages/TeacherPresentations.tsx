@@ -170,8 +170,10 @@ export function TeacherPresentations() {
     const teacherGroups = groups.filter((g) => g.teacherId === selectedTeacherId);
     const teacherGroupIds = teacherGroups.map((g) => g.id);
     
-    // Filtrar presentaciones de esos grupos
-    let filteredPresentations = presentations.filter((p) => teacherGroupIds.includes(p.groupId));
+    // Filtrar presentaciones que incluyan alguno de los grupos del maestro
+    let filteredPresentations = presentations.filter((p) => 
+      p.groupIds?.some(groupId => teacherGroupIds.includes(groupId))
+    );
     
     // Aplicar filtro de estado
     const today = new Date();
@@ -191,10 +193,10 @@ export function TeacherPresentations() {
     const teacherGroupIds = teacherGroups.map((g) => g.id);
     const today = new Date();
     return presentations.filter((p) => 
-      teacherGroupIds.includes(p.groupId) && 
+      p.groupIds?.some(groupId => teacherGroupIds.includes(groupId)) && 
       (isFuture(p.date) || format(p.date, 'yyyy-MM-dd') === format(today, 'yyyy-MM-dd'))
     ).length;
-  }, [selectedTeacherId, selectedTeacher]);
+  }, [selectedTeacherId, selectedTeacher, groups, presentations]);
 
   const handleExport = () => {
     if (selectedTeacher) {
@@ -318,7 +320,10 @@ export function TeacherPresentations() {
               ) : (
                 <div className="grid grid-cols-1 gap-4">
                   {teacherPresentations.map((presentation) => {
-                    const group = groups.find((g) => g.id === presentation.groupId);
+                    // Obtener todos los grupos de la presentación
+                    const presentationGroups = presentation.groupIds
+                      ?.map(groupId => groups.find((g) => g.id === groupId))
+                      .filter(Boolean) || [];
                     const isPastEvent = isPast(presentation.date) && format(presentation.date, 'yyyy-MM-dd') !== format(new Date(), 'yyyy-MM-dd');
                     const isToday = format(presentation.date, 'yyyy-MM-dd') === format(new Date(), 'yyyy-MM-dd');
                     const daysUntil = differenceInDays(presentation.date, new Date());
@@ -339,42 +344,48 @@ export function TeacherPresentations() {
                       >
                         <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4">
                           <div className="flex-1">
-                            <div className="flex items-start gap-3 mb-3">
-                              <div
-                                className="w-4 h-4 rounded-full mt-1 flex-shrink-0"
-                                style={{ backgroundColor: group?.color }}
-                              />
-                              <div className="flex-1">
-                                <h3 className="text-lg font-semibold text-gray-900 mb-1">
-                                  {presentation.title}
-                                </h3>
-                                <div className="text-sm text-gray-600 space-y-1">
-                                  <div className="flex items-center gap-2">
-                                    <Users className="size-4" />
-                                    <span>{group?.name || 'Grupo no encontrado'}</span>
-                                  </div>
-                                  <div className="flex items-center gap-2">
-                                    <Calendar className="size-4" />
-                                    <span>
-                                      {format(presentation.date, "d 'de' MMMM, yyyy", { locale: es })}
-                                    </span>
-                                  </div>
-                                  <div className="flex items-center gap-2">
-                                    <Clock className="size-4" />
-                                    <span>{presentation.time}</span>
-                                  </div>
-                                  <div className="flex items-center gap-2">
-                                    <MapPin className="size-4" />
-                                    <span>{presentation.location}</span>
-                                  </div>
+                            <h3 className="text-lg font-semibold text-gray-900 mb-3">
+                              {presentation.title}
+                            </h3>
+
+                            {presentationGroups.length > 0 && (
+                              <div className="mb-3">
+                                <p className="text-xs text-gray-500 mb-2">Grupos participantes:</p>
+                                <div className="flex flex-wrap gap-2">
+                                  {presentationGroups.map((group) => (
+                                    <div key={group.id} className="flex items-center gap-2 bg-gray-50 px-3 py-1 rounded-lg">
+                                      <div
+                                        className="w-3 h-3 rounded-full"
+                                        style={{ backgroundColor: group.color }}
+                                      />
+                                      <span className="text-sm text-gray-700">{group.name}</span>
+                                    </div>
+                                  ))}
                                 </div>
-                                {presentation.description && (
-                                  <p className="mt-3 text-sm text-gray-600">
-                                    {presentation.description}
-                                  </p>
-                                )}
+                              </div>
+                            )}
+
+                            <div className="text-sm text-gray-600 space-y-1">
+                              <div className="flex items-center gap-2">
+                                <Calendar className="size-4" />
+                                <span>
+                                  {format(presentation.date, "d 'de' MMMM, yyyy", { locale: es })}
+                                </span>
+                              </div>
+                              <div className="flex items-center gap-2">
+                                <Clock className="size-4" />
+                                <span>{presentation.time}</span>
+                              </div>
+                              <div className="flex items-center gap-2">
+                                <MapPin className="size-4" />
+                                <span>{presentation.location}</span>
                               </div>
                             </div>
+                            {presentation.description && (
+                              <p className="mt-3 text-sm text-gray-600">
+                                {presentation.description}
+                              </p>
+                            )}
                           </div>
                           <div className="flex flex-col items-start sm:items-end gap-2">
                             {isToday && (

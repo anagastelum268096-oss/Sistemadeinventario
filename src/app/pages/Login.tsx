@@ -11,17 +11,54 @@ import { toast } from 'sonner';
 export function Login() {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
+  const [loading, setLoading] = useState(false);
   const { login } = useAuth();
   const navigate = useNavigate();
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setLoading(true);
     
-    if (login(username, password)) {
-      toast.success('¡Bienvenido!');
-      navigate('/');
-    } else {
-      toast.error('Usuario o contraseña incorrectos');
+    try {
+      const success = await login(username, password);
+      
+      if (success) {
+        toast.success('¡Bienvenido! Inicio de sesión exitoso');
+        navigate('/');
+      } else {
+        toast.error('Correo electrónico o contraseña incorrectos', {
+          description: 'Por favor verifica tus credenciales e intenta nuevamente'
+        });
+      }
+    } catch (error: any) {
+      // Mensajes de error específicos de Firebase
+      let errorMessage = 'Error al iniciar sesión';
+      let errorDescription = '';
+
+      if (error.code === 'auth/invalid-credential' || error.code === 'auth/wrong-password') {
+        errorMessage = 'Contraseña incorrecta';
+        errorDescription = 'La contraseña ingresada no es válida';
+      } else if (error.code === 'auth/user-not-found') {
+        errorMessage = 'Usuario no encontrado';
+        errorDescription = 'No existe una cuenta con este correo electrónico';
+      } else if (error.code === 'auth/invalid-email') {
+        errorMessage = 'Correo electrónico inválido';
+        errorDescription = 'Por favor ingresa un correo electrónico válido';
+      } else if (error.code === 'auth/too-many-requests') {
+        errorMessage = 'Demasiados intentos fallidos';
+        errorDescription = 'Por favor espera unos minutos antes de intentar nuevamente';
+      } else if (error.code === 'auth/network-request-failed') {
+        errorMessage = 'Error de conexión';
+        errorDescription = 'Verifica tu conexión a internet';
+      } else {
+        errorDescription = 'Por favor intenta nuevamente más tarde';
+      }
+
+      toast.error(errorMessage, {
+        description: errorDescription
+      });
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -42,13 +79,13 @@ export function Login() {
         <CardContent>
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="space-y-2">
-              <Label htmlFor="username">Usuario</Label>
+              <Label htmlFor="username">Correo Electrónico</Label>
               <div className="relative">
                 <User className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
                 <Input
                   id="username"
-                  type="text"
-                  placeholder="Ingresa tu usuario"
+                  type="email"
+                  placeholder="ejemplo@correo.com"
                   value={username}
                   onChange={(e) => setUsername(e.target.value)}
                   className="pl-9"
@@ -71,8 +108,8 @@ export function Login() {
                 />
               </div>
             </div>
-            <Button type="submit" className="w-full">
-              Iniciar Sesión
+            <Button type="submit" className="w-full" disabled={loading}>
+              {loading ? 'Iniciando sesión...' : 'Iniciar Sesión'}
             </Button>
           </form>
         </CardContent>

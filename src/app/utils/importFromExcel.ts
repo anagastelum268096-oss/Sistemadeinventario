@@ -71,28 +71,76 @@ export const importPresentations = async (file: File): Promise<Presentation[]> =
   
   return data.map((row: any, index: number) => {
     const dateStr = row['Fecha'] || row['Date'] || '';
+    const timeStr = row['Hora'] || row['Time'] || '';
     let date = new Date();
     
     if (dateStr) {
-      // Intentar parsear fecha en diferentes formatos
-      if (typeof dateStr === 'number') {
-        // Excel guarda fechas como números (días desde 1900)
-        date = XLSX.SSF.parse_date_code(dateStr);
-        date = new Date(date.y, date.m - 1, date.d);
+      try {
+        // Intentar parsear fecha en diferentes formatos
+        if (typeof dateStr === 'number') {
+          // Excel guarda fechas como números (días desde 1900)
+          const parsed = XLSX.SSF.parse_date_code(dateStr);
+          date = new Date(parsed.y, parsed.m - 1, parsed.d);
+        } else if (typeof dateStr === 'string') {
+          // Intentar formato d/m/yyyy
+          const parts = dateStr.split('/');
+          if (parts.length === 3) {
+            const day = parseInt(parts[0]);
+            const month = parseInt(parts[1]) - 1; // Meses en JS son 0-indexed
+            const year = parseInt(parts[2]);
+            date = new Date(year, month, day);
+          } else {
+            date = new Date(dateStr);
+          }
+        } else {
+          date = new Date(dateStr);
+        }
+        
+        // Si hay hora, agregarla
+        if (timeStr && !isNaN(date.getTime())) {
+          const timeMatch = timeStr.toString().match(/(\d{1,2}):(\d{2})/);
+          if (timeMatch) {
+            const hours = parseInt(timeMatch[1]);
+            const minutes = parseInt(timeMatch[2]);
+            date.setHours(hours, minutes, 0, 0);
+          }
+        }
+        
+        // Validar que la fecha sea válida
+        if (isNaN(date.getTime())) {
+          console.warn('Invalid date in import:', dateStr);
+          date = new Date(); // Fallback a fecha actual
+        }
+      } catch (error) {
+        console.warn('Error parsing date:', dateStr, error);
+        date = new Date(); // Fallback a fecha actual
+      }
+    }
+    
+    // Obtener nombres de grupos (puede venir separado por comas o un solo grupo)
+    const groupStr = row['Grupo'] || row['Group'] || '';
+    const groupNames: string[] = [];
+    
+    if (groupStr) {
+      if (typeof groupStr === 'string') {
+        // Puede haber múltiples grupos separados por coma o punto y coma
+        groupNames.push(...groupStr.split(/[,;]/).map((g: string) => g.trim()).filter(Boolean));
       } else {
-        date = new Date(dateStr);
+        groupNames.push(String(groupStr).trim());
       }
     }
     
     return {
       id: `imported-${Date.now()}-${index}`,
       title: row['Título'] || row['Titulo'] || row['Title'] || '',
-      groupId: row['ID Grupo'] || row['Group ID'] || '',
+      groupNames: groupNames, // Guardar nombres temporalmente
+      groupIds: [], // Se llenará después al procesar
       date: date,
       location: row['Ubicación'] || row['Ubicacion'] || row['Location'] || '',
       description: row['Descripción'] || row['Descripcion'] || row['Description'] || '',
+      status: row['Estado'] || row['Status'] || 'Programada',
     };
-  }).filter((item: Presentation) => item.title);
+  }).filter((item: any) => item.title);
 };
 
 // Importar grupos
@@ -101,12 +149,13 @@ export const importGroups = async (file: File): Promise<Group[]> => {
   
   return data.map((row: any, index: number) => ({
     id: `imported-${Date.now()}-${index}`,
-    name: row['Nombre'] || row['Name'] || '',
+    name: row['Nombre del Grupo'] || row['Nombre'] || row['Name'] || '',
     type: row['Tipo'] || row['Type'] || 'Banda',
-    teacherId: row['ID Maestro'] || row['Teacher ID'] || '',
+    teacherId: '', // Se asignará después al buscar/crear el maestro
+    teacherName: row['Maestro'] || row['Teacher'] || '', // Guardamos el nombre temporalmente
     studentIds: [],
     color: row['Color'] || row['Colour'] || '#3b82f6',
-  })).filter((item: Group) => item.name);
+  })).filter((item: any) => item.name);
 };
 
 // Importar maestros

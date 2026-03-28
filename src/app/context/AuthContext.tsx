@@ -1,62 +1,80 @@
 import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { User, AuthContextType } from '@/app/types';
+import { auth } from '@/firebase/config';
+import { 
+  signInWithEmailAndPassword, 
+  signOut as firebaseSignOut, 
+  onAuthStateChanged,
+  User as FirebaseUser
+} from 'firebase/auth';
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-// Usuarios predefinidos (en producción, esto vendría de una base de datos)
-const defaultUsers: User[] = [
-  {
-    id: '1',
-    username: 'admin',
-    password: 'admin123',
-    role: 'admin',
-    name: 'Administrador',
-    email: 'admin@musicschool.com',
-  },
-  {
-    id: '2',
-    username: 'maestro',
-    password: 'maestro123',
-    role: 'teacher',
-    name: 'Maestro de Música',
-    email: 'maestro@musicschool.com',
-  },
-];
+// Mapeo de roles por correo (puedes ajustar esto según tus necesidades)
+const getRoleFromEmail = (email: string): 'admin' | 'teacher' => {
+  if (email.includes('admin')) return 'admin';
+  return 'teacher';
+};
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // Cargar usuario de localStorage al iniciar
-    const savedUser = localStorage.getItem('currentUser');
-    if (savedUser) {
-      try {
-        setUser(JSON.parse(savedUser));
-      } catch (error) {
-        console.error('Error loading user:', error);
-        localStorage.removeItem('currentUser');
+    // Escuchar cambios en el estado de autenticación de Firebase
+    const unsubscribe = onAuthStateChanged(auth, (firebaseUser: FirebaseUser | null) => {
+      if (firebaseUser) {
+        // Usuario autenticado en Firebase
+        const appUser: User = {
+          id: firebaseUser.uid,
+          username: firebaseUser.email?.split('@')[0] || 'user',
+          password: '', // No almacenamos la contraseña
+          role: getRoleFromEmail(firebaseUser.email || ''),
+          name: firebaseUser.displayName || firebaseUser.email?.split('@')[0] || 'Usuario',
+          email: firebaseUser.email || undefined,
+        };
+        setUser(appUser);
+      } else {
+        // Usuario no autenticado
+        setUser(null);
       }
-    }
+      setLoading(false);
+    });
+
+    // Cleanup
+    return () => unsubscribe();
   }, []);
 
-  const login = (username: string, password: string): boolean => {
-    const foundUser = defaultUsers.find(
-      (u) => u.username === username && u.password === password
-    );
-
-    if (foundUser) {
-      // No guardar la contraseña en localStorage
-      const userToSave = { ...foundUser };
-      setUser(userToSave);
-      localStorage.setItem('currentUser', JSON.stringify(userToSave));
+  const login = async (email: string, password: string): Promise<boolean> => {
+    try {
+      const userCredential = await signInWithEmailAndPassword(auth, email, password);
+      const firebaseUser = userCredential.user;
+      
+      // Crear objeto User de la aplicación
+      const appUser: User = {
+        id: firebaseUser.uid,
+        username: firebaseUser.email?.split('@')[0] || 'user',
+        password: '', // No almacenamos la contraseña
+        role: getRoleFromEmail(firebaseUser.email || ''),
+        name: firebaseUser.displayName || firebaseUser.email?.split('@')[0] || 'Usuario',
+        email: firebaseUser.email || undefined,
+      };
+      
+      setUser(appUser);
       return true;
+    } catch (error: any) {
+      console.error('Error al iniciar sesión:', error);
+      return false;
     }
-    return false;
   };
 
-  const logout = () => {
-    setUser(null);
-    localStorage.removeItem('currentUser');
+  const logout = async () => {
+    try {
+      await firebaseSignOut(auth);
+      setUser(null);
+    } catch (error) {
+      console.error('Error al cerrar sesión:', error);
+    }
   };
 
   const isAdmin = () => user?.role === 'admin';
@@ -69,6 +87,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     isAdmin,
     isTeacher,
   };
+
+  // Mostrar un loader mientras se verifica el estado de autenticación
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-purple-50">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
+          <p className="text-gray-600">Cargando...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <AuthContext.Provider value={value}>

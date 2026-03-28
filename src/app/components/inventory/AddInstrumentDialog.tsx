@@ -6,13 +6,14 @@ import { Dialog, DialogContent, DialogTitle, DialogDescription, DialogHeader } f
 interface AddInstrumentDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onAddInstrument: (instrument: Omit<Instrument, 'id'>) => void;
+  onAddInstrument: (instrument: Omit<Instrument, 'id'>) => Promise<void>;
 }
 
 const categories = ['Cuerdas', 'Vientos Madera', 'Vientos Metal', 'Percusión', 'Teclados'];
 const conditions: Instrument['condition'][] = ['Excelente', 'Bueno', 'Regular', 'Necesita reparación'];
 
 export function AddInstrumentDialog({ open, onOpenChange, onAddInstrument }: AddInstrumentDialogProps) {
+  const [loading, setLoading] = useState(false);
   const [formData, setFormData] = useState({
     code: '',
     name: '',
@@ -24,20 +25,28 @@ export function AddInstrumentDialog({ open, onOpenChange, onAddInstrument }: Add
     acquisitionDate: '',
   });
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    onAddInstrument(formData);
-    setFormData({
-      code: '',
-      name: '',
-      category: categories[0],
-      quantity: 1,
-      location: '',
-      condition: 'Bueno',
-      notes: '',
-      acquisitionDate: '',
-    });
-    onOpenChange(false);
+    setLoading(true);
+    
+    try {
+      await onAddInstrument(formData);
+      setFormData({
+        code: '',
+        name: '',
+        category: categories[0],
+        quantity: 1,
+        location: '',
+        condition: 'Bueno',
+        notes: '',
+        acquisitionDate: '',
+      });
+      onOpenChange(false);
+    } catch (error) {
+      console.error('Error en el formulario:', error);
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -182,8 +191,9 @@ export function AddInstrumentDialog({ open, onOpenChange, onAddInstrument }: Add
             <button
               type="submit"
               className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors"
+              disabled={loading}
             >
-              Agregar Instrumento
+              {loading ? 'Agregando...' : 'Agregar Instrumento'}
             </button>
           </div>
         </form>

@@ -10,15 +10,14 @@ export function Layout() {
   const { user, logout, isAdmin } = useAuth();
   const navigate = useNavigate();
   
-  const navigation = [
-    { name: 'Inventario', to: '/', icon: Music },
-    { name: 'Categorías', to: '/categories', icon: Tag },
-    { name: 'Préstamos', to: '/loans', icon: Package },
-    { name: 'Calendario', to: '/calendar', icon: CalendarIcon },
-    { name: 'Grupos', to: '/groups', icon: Users },
-    { name: 'Por Maestro', to: '/teacher-presentations', icon: User },
+const navigation = [
+    { name: 'Inventario', to: '/', icon: Music, adminOnly: false },
+    { name: 'Categorías', to: '/categories', icon: Tag, adminOnly: true },
+    { name: 'Préstamos', to: '/loans', icon: Package, adminOnly: true },
+    { name: 'Calendario', to: '/calendar', icon: CalendarIcon, adminOnly: true },
+    { name: 'Grupos', to: '/groups', icon: Users, adminOnly: true },
+    { name: 'Por Maestro', to: '/teacher-presentations', icon: User, adminOnly: false },
   ];
-
   const handleLogout = () => {
     logout();
     navigate('/login');
@@ -72,9 +71,11 @@ export function Layout() {
             </div>
           </div>
         )}
-
+        
         <nav className="flex-1 p-4 space-y-1 overflow-y-auto">
-          {navigation.map((item) => {
+          {navigation
+            .filter((item) => isAdmin() ? true : !item.adminOnly) // <--- ¡Esta es la línea mágica!
+            .map((item) => {
             const Icon = item.icon;
             return (
               <NavLink

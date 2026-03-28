@@ -20,11 +20,12 @@ export function EditPresentationDialog({
 }: EditPresentationDialogProps) {
   const [formData, setFormData] = useState({
     title: presentation.title,
-    groupId: presentation.groupId,
+    groupIds: presentation.groupIds || [], // Cambiado a groupIds
     date: format(presentation.date, 'yyyy-MM-dd'),
     time: presentation.time,
     location: presentation.location,
     description: presentation.description || '',
+    groupDescriptions: presentation.groupDescriptions || {},
     status: presentation.status,
   });
 
@@ -32,18 +33,53 @@ export function EditPresentationDialog({
     if (presentation) {
       setFormData({
         title: presentation.title,
-        groupId: presentation.groupId,
+        groupIds: presentation.groupIds || [], // Cambiado a groupIds
         date: format(presentation.date, 'yyyy-MM-dd'),
         time: presentation.time,
         location: presentation.location,
         description: presentation.description || '',
+        groupDescriptions: presentation.groupDescriptions || {},
         status: presentation.status,
       });
     }
   }, [presentation]);
 
+  const handleGroupToggle = (groupId: string) => {
+    setFormData(prev => {
+      const isRemoving = prev.groupIds.includes(groupId);
+      const newGroupDescriptions = { ...prev.groupDescriptions };
+      
+      // Si se está removiendo el grupo, eliminar su descripción
+      if (isRemoving) {
+        delete newGroupDescriptions[groupId];
+      }
+      
+      return {
+        ...prev,
+        groupIds: isRemoving
+          ? prev.groupIds.filter(id => id !== groupId)
+          : [...prev.groupIds, groupId],
+        groupDescriptions: newGroupDescriptions
+      };
+    });
+  };
+
+  const handleGroupDescriptionChange = (groupId: string, description: string) => {
+    setFormData(prev => ({
+      ...prev,
+      groupDescriptions: {
+        ...prev.groupDescriptions,
+        [groupId]: description
+      }
+    }));
+  };
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    if (formData.groupIds.length === 0) {
+      alert('Selecciona al menos un grupo para la presentación');
+      return;
+    }
     onUpdatePresentation(presentation.id, {
       ...formData,
       date: new Date(formData.date + 'T00:00:00'),
@@ -53,7 +89,7 @@ export function EditPresentationDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-2xl">
+      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto" aria-describedby={undefined}>
         <DialogHeader>
           <DialogTitle>Editar Presentación</DialogTitle>
           <DialogDescription>
@@ -77,21 +113,30 @@ export function EditPresentationDialog({
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Grupo *
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              Grupos Participantes * (Selecciona uno o más)
             </label>
-            <select
-              required
-              value={formData.groupId}
-              onChange={(e) => setFormData({ ...formData, groupId: e.target.value })}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-            >
+            <div className="flex flex-wrap gap-2">
               {groups.map((group) => (
-                <option key={group.id} value={group.id}>
+                <button
+                  key={group.id}
+                  type="button"
+                  onClick={() => handleGroupToggle(group.id)}
+                  className={`px-4 py-2 border-2 rounded-lg transition-all ${
+                    formData.groupIds.includes(group.id) 
+                      ? 'border-blue-500 bg-blue-50 text-blue-700 font-medium' 
+                      : 'border-gray-300 bg-white text-gray-700 hover:border-gray-400'
+                  }`}
+                >
                   {group.name} ({group.type})
-                </option>
+                </button>
               ))}
-            </select>
+            </div>
+            {formData.groupIds.length > 0 && (
+              <p className="text-xs text-green-600 mt-2">
+                {formData.groupIds.length} grupo{formData.groupIds.length > 1 ? 's' : ''} seleccionado{formData.groupIds.length > 1 ? 's' : ''}
+              </p>
+            )}
           </div>
 
           <div className="grid grid-cols-2 gap-4">
@@ -152,16 +197,56 @@ export function EditPresentationDialog({
             </select>
           </div>
 
+          {/* Descripciones específicas por grupo */}
+          {formData.groupIds.length > 0 && (
+            <div className="border-t border-gray-200 pt-4">
+              <label className="block text-sm font-medium text-gray-700 mb-3">
+                Detalles Específicos por Grupo
+              </label>
+              <p className="text-xs text-gray-500 mb-3">
+                Agrega información adicional específica para cada grupo participante
+              </p>
+              <div className="space-y-3">
+                {formData.groupIds.map((groupId) => {
+                  const group = groups.find(g => g.id === groupId);
+                  if (!group) return null;
+                  
+                  return (
+                    <div key={groupId} className="bg-gray-50 border border-gray-200 rounded-lg p-3">
+                      <div className="flex items-center gap-2 mb-2">
+                        <div 
+                          className="w-3 h-3 rounded-full" 
+                          style={{ backgroundColor: group.color }}
+                        />
+                        <span className="text-sm font-medium text-gray-900">
+                          {group.name}
+                        </span>
+                        <span className="text-xs text-gray-500">({group.type})</span>
+                      </div>
+                      <textarea
+                        value={formData.groupDescriptions[groupId] || ''}
+                        onChange={(e) => handleGroupDescriptionChange(groupId, e.target.value)}
+                        rows={2}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+                        placeholder={`Detalles específicos para ${group.name}... (repertorio, horario de ensayo, etc.)`}
+                      />
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">
-              Descripción
+              Descripción General
             </label>
             <textarea
               value={formData.description}
               onChange={(e) => setFormData({ ...formData, description: e.target.value })}
               rows={3}
               className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-              placeholder="Detalles adicionales sobre la presentación..."
+              placeholder="Detalles generales sobre la presentación..."
             />
           </div>
 

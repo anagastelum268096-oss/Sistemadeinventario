@@ -1,4 +1,4 @@
-import { Edit2, Trash2, MapPin, AlertCircle } from 'lucide-react';
+import { Edit2, Trash2, MapPin, AlertCircle, Music } from 'lucide-react';
 import { useState } from 'react';
 import { Instrument } from '@/app/types';
 import { EditInstrumentDialog } from './EditInstrumentDialog';
@@ -6,8 +6,8 @@ import { useAuth } from '@/app/context/AuthContext';
 
 interface InstrumentListProps {
   instruments: Instrument[];
-  onUpdateInstrument: (id: string, instrument: Omit<Instrument, 'id'>) => void;
-  onDeleteInstrument: (id: string) => void;
+  onUpdateInstrument: (id: string, instrument: Omit<Instrument, 'id'>) => Promise<void>;
+  onDeleteInstrument: (id: string) => Promise<void>;
 }
 
 export function InstrumentList({ instruments, onUpdateInstrument, onDeleteInstrument }: InstrumentListProps) {
@@ -128,9 +128,9 @@ export function InstrumentList({ instruments, onUpdateInstrument, onDeleteInstru
                             <Edit2 className="size-4" />
                           </button>
                           <button
-                            onClick={() => {
+                            onClick={async () => {
                               if (window.confirm(`¿Estás seguro de eliminar "${instrument.name}"?`)) {
-                                onDeleteInstrument(instrument.id);
+                                await onDeleteInstrument(instrument.id);
                               }
                             }}
                             className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
@@ -154,33 +154,12 @@ export function InstrumentList({ instruments, onUpdateInstrument, onDeleteInstru
           open={!!editingInstrument}
           onOpenChange={(open) => !open && setEditingInstrument(null)}
           instrument={editingInstrument}
-          onUpdateInstrument={(updated) => {
-            onUpdateInstrument(editingInstrument.id, updated);
+          onUpdateInstrument={async (updated) => {
+            await onUpdateInstrument(editingInstrument.id, updated);
             setEditingInstrument(null);
           }}
         />
       )}
     </>
-  );
-}
-
-function Music(props: React.SVGProps<SVGSVGElement>) {
-  return (
-    <svg
-      xmlns="http://www.w3.org/2000/svg"
-      width="24"
-      height="24"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      {...props}
-    >
-      <path d="M9 18V5l12-2v13" />
-      <circle cx="6" cy="18" r="3" />
-      <circle cx="18" cy="16" r="3" />
-    </svg>
   );
 }

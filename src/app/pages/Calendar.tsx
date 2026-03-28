@@ -1,7 +1,7 @@
 import { useState, useMemo, useEffect } from 'react';
-import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameMonth, isSameDay, addMonths, subMonths, differenceInDays } from 'date-fns';
+import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameDay, addMonths, subMonths } from 'date-fns';
 import { es } from 'date-fns/locale';
-import { ChevronLeft, ChevronRight, Calendar as CalendarIcon, MapPin, Plus, Download } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Calendar as CalendarIcon, Plus, Download } from 'lucide-react';
 import { Presentation, Group } from '@/app/types';
 import { GroupEventsList } from '@/app/components/calendar/GroupEventsList';
 import { AddPresentationDialog } from '@/app/components/calendar/AddPresentationDialog';
@@ -12,9 +12,9 @@ import { ImportButton } from '@/app/components/ImportButton';
 import { useAuth } from '@/app/context/AuthContext';
 import { toast } from 'sonner';
 
-// Sin datos iniciales
-const initialPresentations: Presentation[] = [];
-
+// ¡NUEVOS IMPORTS DE FIREBASE!
+import { collection, getDocs, doc, setDoc, deleteDoc } from 'firebase/firestore';
+import { db } from "../../firebase/config";
 export function Calendar() {
   const [currentMonth, setCurrentMonth] = useState(new Date());
   const [presentations, setPresentations] = useState<Presentation[]>([]);
@@ -24,38 +24,40 @@ export function Calendar() {
   const [editingPresentation, setEditingPresentation] = useState<Presentation | null>(null);
   const { isAdmin } = useAuth();
 
-  // Cargar datos desde localStorage al iniciar
+  // Cargar datos desde FIREBASE al iniciar
   useEffect(() => {
-    const savedPresentations = localStorage.getItem('presentations');
-    if (savedPresentations) {
-      const parsed = JSON.parse(savedPresentations);
-      setPresentations(
-        parsed.map((pres: any) => ({
-          ...pres,
-          date: new Date(pres.date),
-        }))
-      );
-    } else {
-      // Inicializar con datos de ejemplo solo si no hay datos guardados
-      setPresentations(initialPresentations);
-      localStorage.setItem('presentations', JSON.stringify(initialPresentations));
-    }
+    const fetchData = async () => {
+      try {
+        // 1. Cargar Grupos
+        const groupsSnap = await getDocs(collection(db, 'groups'));
+        const loadedGroups = groupsSnap.docs.map(doc => ({ id: doc.id, ...doc.data() })) as Group[];
+        setGroups(loadedGroups);
 
-    const savedGroups = localStorage.getItem('groups');
-    if (savedGroups) {
-      setGroups(JSON.parse(savedGroups));
-    } else {
-      // Sin grupos iniciales
-      setGroups([]);
-      localStorage.setItem('groups', JSON.stringify([]));
-    }
+        // 2. Cargar Presentaciones
+        const presSnap = await getDocs(collection(db, 'presentations'));
+        const loadedPres = presSnap.docs.map(doc => {
+          const data = doc.data();
+          return {
+            id: doc.id,
+            ...data,
+            // Convertir la fecha de Firebase a una fecha de Javascript
+            date: data.date?.toDate ? data.date.toDate() : new Date(data.date)
+          };
+        }) as Presentation[];
+        
+        setPresentations(loadedPres.filter(p => p.title));
+      } catch (error) {
+        console.error("Error al cargar datos de Firebase:", error);
+        toast.error("Error al cargar el calendario desde la nube");
+      }
+    };
+
+    fetchData();
   }, []);
 
   const monthStart = startOfMonth(currentMonth);
   const monthEnd = endOfMonth(currentMonth);
   const daysInMonth = eachDayOfInterval({ start: monthStart, end: monthEnd });
-
-  // Get day of week for first day (0 = Sunday)
   const firstDayOfWeek = monthStart.getDay();
 
   const presentationsByDate = useMemo(() => {
@@ -76,44 +78,102 @@ export function Calendar() {
     return presentationsByDate.get(dateKey) || [];
   }, [selectedDate, presentationsByDate]);
 
-  const handleAddPresentation = (presentation: Omit<Presentation, 'id'>) => {
-    const newPresentation = {
-      ...presentation,
-      id: Date.now().toString(),
-    };
-    const updatedPresentations = [...presentations, newPresentation];
-    setPresentations(updatedPresentations);
-    localStorage.setItem('presentations', JSON.stringify(updatedPresentations));
-    // Disparar evento personalizado para notificar a otros componentes
-    window.dispatchEvent(new Event('localStorageUpdate'));
+  // Guardar nueva presentación en Firebase
+  const handleAddPresentation = async (presentation: Omit<Presentation, 'id'>) => {
+    try {
+      const newId = Date.now().toString();
+      const newPresentation = { ...presentation, id: newId };
+      
+      await setDoc(doc(db, 'presentations', newId), newPresentation);
+      setPresentations(prev => [...prev, newPresentation]);
+      toast.success("Presentación guardada exitosamente");
+    } catch (error) {
+      toast.error("Error al guardar en la nube");
+      console.error(error);
+    }
   };
 
-  const handleUpdatePresentation = (id: string, updated: Omit<Presentation, 'id'>) => {
-    const updatedPresentations = presentations.map((presentation) =>
-      presentation.id === id ? { ...updated, id } : presentation
-    );
-    setPresentations(updatedPresentations);
-    localStorage.setItem('presentations', JSON.stringify(updatedPresentations));
-    // Disparar evento personalizado para notificar a otros componentes
-    window.dispatchEvent(new Event('localStorageUpdate'));
+  // Actualizar presentación en Firebase
+  const handleUpdatePresentation = async (id: string, updated: Omit<Presentation, 'id'>) => {
+    try {
+      await setDoc(doc(db, 'presentations', id), { ...updated, id }, { merge: true });
+      setPresentations(prev => prev.map(p => p.id === id ? { ...updated, id } : p));
+      toast.success("Presentación actualizada");
+    } catch (error) {
+      toast.error("Error al actualizar en la nube");
+    }
   };
 
-  const handleDeletePresentation = (id: string) => {
-    const updatedPresentations = presentations.filter((p) => p.id !== id);
-    setPresentations(updatedPresentations);
-    localStorage.setItem('presentations', JSON.stringify(updatedPresentations));
-    // Disparar evento personalizado para notificar a otros componentes
-    window.dispatchEvent(new Event('localStorageUpdate'));
+  // Eliminar presentación de Firebase
+  const handleDeletePresentation = async (id: string) => {
+    try {
+      await deleteDoc(doc(db, 'presentations', id));
+      setPresentations(prev => prev.filter(p => p.id !== id));
+      toast.success("Presentación eliminada");
+    } catch (error) {
+      toast.error("Error al eliminar de la nube");
+    }
   };
 
   const handleImportPresentations = async (file: File) => {
     try {
       const importedPresentations = await importPresentations(file);
-      const updatedPresentations = [...presentations, ...importedPresentations];
-      setPresentations(updatedPresentations);
-      localStorage.setItem('presentations', JSON.stringify(updatedPresentations));
-      window.dispatchEvent(new Event('localStorageUpdate'));
-      toast.success(`${importedPresentations.length} presentaciones importadas correctamente`);
+      const processedPresentations: Presentation[] = [];
+      const newGroups: Group[] = [];
+      
+      for (const pres of importedPresentations) {
+        const presData = pres as any;
+        const groupNames = presData.groupNames || [];
+        const groupIds: string[] = [];
+        
+        for (const groupName of groupNames) {
+          if (!groupName) continue;
+          const existingGroup = groups.find((g) => g.name.toLowerCase() === groupName.toLowerCase());
+          
+          if (existingGroup) {
+            groupIds.push(existingGroup.id);
+          } else {
+            const newGroup = newGroups.find((g) => g.name.toLowerCase() === groupName.toLowerCase());
+            if (newGroup) {
+              groupIds.push(newGroup.id);
+            } else {
+              const group: Group = {
+                id: `g${Date.now()}-${newGroups.length}`,
+                name: groupName,
+                type: 'Banda',
+                teacherId: '',
+                studentIds: [],
+                color: '#' + Math.floor(Math.random()*16777215).toString(16).padStart(6, '0'),
+              };
+              newGroups.push(group);
+              groupIds.push(group.id);
+            }
+          }
+        }
+        
+        processedPresentations.push({
+          id: pres.id,
+          title: pres.title,
+          groupIds: groupIds,
+          date: pres.date,
+          location: pres.location,
+          description: pres.description || '',
+        });
+      }
+      
+      // Guardar grupos nuevos en Firebase
+      for (const group of newGroups) {
+        await setDoc(doc(db, 'groups', group.id), group);
+      }
+      if (newGroups.length > 0) setGroups(prev => [...prev, ...newGroups]);
+      
+      // Guardar presentaciones en Firebase
+      for (const pres of processedPresentations) {
+        await setDoc(doc(db, 'presentations', pres.id), pres);
+      }
+      setPresentations(prev => [...prev, ...processedPresentations]);
+      
+      toast.success(`${processedPresentations.length} presentaciones importadas correctamente`);
     } catch (error) {
       toast.error('Error al importar el archivo. Verifica el formato.');
       console.error(error);
@@ -177,10 +237,8 @@ export function Calendar() {
 
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* Calendar */}
           <div className="lg:col-span-2">
             <div className="bg-white rounded-lg border border-gray-200 p-4 sm:p-6">
-              {/* Calendar Header */}
               <div className="flex items-center justify-between mb-6">
                 <h2 className="text-xl font-bold text-gray-900">
                   {format(currentMonth, 'MMMM yyyy', { locale: es })}
@@ -207,7 +265,6 @@ export function Calendar() {
                 </div>
               </div>
 
-              {/* Day headers */}
               <div className="grid grid-cols-7 gap-2 mb-2">
                 {['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'].map((day) => (
                   <div key={day} className="text-center text-sm font-medium text-gray-500 py-2">
@@ -216,14 +273,11 @@ export function Calendar() {
                 ))}
               </div>
 
-              {/* Calendar grid */}
               <div className="grid grid-cols-7 gap-2">
-                {/* Empty cells for days before month starts */}
                 {Array.from({ length: firstDayOfWeek }).map((_, i) => (
                   <div key={`empty-${i}`} className="aspect-square" />
                 ))}
 
-                {/* Days of month */}
                 {daysInMonth.map((day) => {
                   const dateKey = format(day, 'yyyy-MM-dd');
                   const dayPresentations = presentationsByDate.get(dateKey) || [];
@@ -249,13 +303,14 @@ export function Calendar() {
                         {dayPresentations.length > 0 && (
                           <div className="mt-1 flex flex-col gap-1">
                             {dayPresentations.slice(0, 2).map((pres) => {
-                              const group = getGroupById(pres.groupId);
+                              const firstGroupId = pres.groupIds?.[0];
+                              const group = firstGroupId ? getGroupById(firstGroupId) : null;
                               return (
                                 <div
                                   key={pres.id}
                                   className="w-full h-1.5 rounded-full"
-                                  style={{ backgroundColor: group?.color }}
-                                  title={pres.title}
+                                  style={{ backgroundColor: group?.color || '#6B7280' }}
+                                  title={`${pres.title} - ${pres.groupIds?.map(id => getGroupById(id)?.name).filter(Boolean).join(', ')}`}
                                 />
                               );
                             })}
@@ -270,7 +325,6 @@ export function Calendar() {
                 })}
               </div>
 
-              {/* Legend */}
               <div className="mt-6 pt-6 border-t border-gray-200">
                 <h3 className="text-sm font-medium text-gray-700 mb-3">Grupos</h3>
                 <div className="flex flex-wrap gap-3">
@@ -285,13 +339,14 @@ export function Calendar() {
             </div>
           </div>
 
-          {/* Event list for selected date */}
           <div className="lg:col-span-1">
             <GroupEventsList
               presentations={presentations}
               groups={groups}
+              selectedDate={selectedDate}
               onEditPresentation={(presentation) => setEditingPresentation(presentation)}
               onDeletePresentation={handleDeletePresentation}
+              onClearSelection={() => setSelectedDate(null)}
             />
           </div>
         </div>
@@ -310,8 +365,8 @@ export function Calendar() {
           open={!!editingPresentation}
           onOpenChange={(open) => !open && setEditingPresentation(null)}
           presentation={editingPresentation}
-          onUpdatePresentation={(id, updated) => {
-            handleUpdatePresentation(id, updated);
+          onUpdatePresentation={async (id, updated) => {
+            await handleUpdatePresentation(id, updated);
             setEditingPresentation(null);
           }}
           groups={groups}

@@ -7,13 +7,14 @@ interface EditInstrumentDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   instrument: Instrument;
-  onUpdateInstrument: (instrument: Omit<Instrument, 'id'>) => void;
+  onUpdateInstrument: (instrument: Omit<Instrument, 'id'>) => Promise<void>;
 }
 
 const categories = ['Cuerdas', 'Vientos Madera', 'Vientos Metal', 'Percusión', 'Teclados'];
 const conditions: Instrument['condition'][] = ['Excelente', 'Bueno', 'Regular', 'Necesita reparación'];
 
 export function EditInstrumentDialog({ open, onOpenChange, instrument, onUpdateInstrument }: EditInstrumentDialogProps) {
+  const [loading, setLoading] = useState(false);
   const [formData, setFormData] = useState({
     code: instrument.code,
     name: instrument.name,
@@ -25,9 +26,18 @@ export function EditInstrumentDialog({ open, onOpenChange, instrument, onUpdateI
     acquisitionDate: instrument.acquisitionDate || '',
   });
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    onUpdateInstrument(formData);
+    setLoading(true);
+    
+    try {
+      await onUpdateInstrument(formData);
+      onOpenChange(false);
+    } catch (error) {
+      console.error('Error en el formulario:', error);
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -168,8 +178,9 @@ export function EditInstrumentDialog({ open, onOpenChange, instrument, onUpdateI
             <button
               type="submit"
               className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors"
+              disabled={loading}
             >
-              Guardar Cambios
+              {loading ? 'Guardando...' : 'Guardar Cambios'}
             </button>
           </div>
         </form>

@@ -10,9 +10,19 @@ interface AddCategoryDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onAdd: (category: Omit<Category, 'id'>) => void;
+  title?: string;
+  description?: string;
+  placeholder?: string;
 }
 
-export function AddCategoryDialog({ open, onOpenChange, onAdd }: AddCategoryDialogProps) {
+export function AddCategoryDialog({ 
+  open, 
+  onOpenChange, 
+  onAdd, 
+  title = 'Agregar Nueva Categoría',
+  description: dialogDescription,
+  placeholder = 'Ej: Cuerdas, Viento, Percusión'
+}: AddCategoryDialogProps) {
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
 
@@ -34,7 +44,10 @@ export function AddCategoryDialog({ open, onOpenChange, onAdd }: AddCategoryDial
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Agregar Nueva Categoría</DialogTitle>
+          <DialogTitle>{title}</DialogTitle>
+          {dialogDescription && (
+            <p className="text-sm text-muted-foreground">{dialogDescription}</p>
+          )}
         </DialogHeader>
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="space-y-2">
@@ -43,7 +56,7 @@ export function AddCategoryDialog({ open, onOpenChange, onAdd }: AddCategoryDial
               id="name"
               value={name}
               onChange={(e) => setName(e.target.value)}
-              placeholder="Ej: Cuerdas, Viento, Percusión"
+              placeholder={placeholder}
               required
             />
           </div>

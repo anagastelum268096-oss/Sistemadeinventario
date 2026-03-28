@@ -70,7 +70,11 @@ export function PresentationList({
       ) : (
         <div className="space-y-4">
           {presentations.map((presentation) => {
-            const group = getGroupById(presentation.groupId);
+            // Obtener todos los grupos de la presentación
+            const presentationGroups = presentation.groupIds
+              ?.map(groupId => getGroupById(groupId))
+              .filter(Boolean) || [];
+            
             return (
               <div
                 key={presentation.id}
@@ -91,15 +95,22 @@ export function PresentationList({
                   </button>
                 </div>
 
-                {group && (
-                  <div className="flex items-center gap-2 mb-2">
-                    <div 
-                      className="w-3 h-3 rounded-full" 
-                      style={{ backgroundColor: group.color }}
-                    />
-                    <span className="text-sm text-gray-600">
-                      {group.name}
-                    </span>
+                {presentationGroups.length > 0 && (
+                  <div className="mb-2">
+                    <p className="text-xs text-gray-500 mb-1">Grupos participantes:</p>
+                    <div className="flex flex-wrap gap-2">
+                      {presentationGroups.map((group) => (
+                        <div key={group.id} className="flex items-center gap-2 bg-gray-50 px-2 py-1 rounded">
+                          <div 
+                            className="w-3 h-3 rounded-full" 
+                            style={{ backgroundColor: group.color }}
+                          />
+                          <span className="text-sm text-gray-700">
+                            {group.name}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
                   </div>
                 )}
 

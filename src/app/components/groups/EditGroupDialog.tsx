@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Group, Person } from '@/app/types';
+import { Group, Person, GroupType } from '@/app/types';
 import { Dialog, DialogContent, DialogTitle, DialogDescription } from '@/app/components/ui/dialog';
 
 interface EditGroupDialogProps {
@@ -10,7 +10,6 @@ interface EditGroupDialogProps {
   teachers: Person[];
 }
 
-const groupTypes = ['Orquesta', 'Banda', 'Coro', 'Ensamble', 'Grupo de Cámara'];
 const colors = [
   { name: 'Púrpura', value: '#8B5CF6' },
   { name: 'Azul', value: '#3B82F6' },
@@ -23,6 +22,7 @@ const colors = [
 ];
 
 export function EditGroupDialog({ open, onOpenChange, group, onUpdateGroup, teachers }: EditGroupDialogProps) {
+  const [groupTypes, setGroupTypes] = useState<GroupType[]>([]);
   const [formData, setFormData] = useState({
     name: group.name,
     type: group.type,
@@ -30,6 +30,15 @@ export function EditGroupDialog({ open, onOpenChange, group, onUpdateGroup, teac
     color: group.color,
     studentIds: group.studentIds,
   });
+
+  // Cargar tipos de grupo desde localStorage
+  useEffect(() => {
+    const savedGroupTypes = localStorage.getItem('groupTypes');
+    if (savedGroupTypes) {
+      const types = JSON.parse(savedGroupTypes);
+      setGroupTypes(types);
+    }
+  }, [open]); // Recargar cuando se abre el diálogo
 
   useEffect(() => {
     if (group) {
@@ -82,10 +91,19 @@ export function EditGroupDialog({ open, onOpenChange, group, onUpdateGroup, teac
               onChange={(e) => setFormData({ ...formData, type: e.target.value })}
               className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500"
             >
-              {groupTypes.map((type) => (
-                <option key={type} value={type}>{type}</option>
-              ))}
+              {groupTypes.length === 0 ? (
+                <option value="">No hay tipos de grupo configurados</option>
+              ) : (
+                groupTypes.map((type) => (
+                  <option key={type.id} value={type.name}>{type.name}</option>
+                ))
+              )}
             </select>
+            {groupTypes.length === 0 && (
+              <p className="text-xs text-amber-600 mt-1">
+                Configura tipos de grupo en el apartado de Categorías
+              </p>
+            )}
           </div>
 
           <div>

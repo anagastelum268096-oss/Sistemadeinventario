@@ -147,14 +147,23 @@ export function PeopleManagement({
                       </div>
                     </div>
                     <div className="space-y-1 text-sm text-gray-600">
-                      <div className="flex items-center gap-2">
-                        <Mail className="size-3" />
-                        <span className="truncate">{teacher.email}</span>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <Phone className="size-3" />
-                        <span>{teacher.phone}</span>
-                      </div>
+                      {teacher.email && (
+                        <div className="flex items-center gap-2">
+                          <Mail className="size-3" />
+                          <span className="truncate">{teacher.email}</span>
+                        </div>
+                      )}
+                      {teacher.phone && (
+                        <div className="flex items-center gap-2">
+                          <Phone className="size-3" />
+                          <span>{teacher.phone}</span>
+                        </div>
+                      )}
+                      {!teacher.email && !teacher.phone && (
+                        <div className="text-gray-400 text-xs">
+                          Sin información de contacto
+                        </div>
+                      )}
                     </div>
                   </div>
                 ))}
@@ -236,14 +245,18 @@ export function PeopleManagement({
                       </div>
                     </div>
                     <div className="space-y-1 text-sm text-gray-600">
-                      <div className="flex items-center gap-2">
-                        <Mail className="size-3" />
-                        <span className="truncate">{student.email}</span>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <Phone className="size-3" />
-                        <span>{student.phone}</span>
-                      </div>
+                      {student.email && (
+                        <div className="flex items-center gap-2">
+                          <Mail className="size-3" />
+                          <span className="truncate">{student.email}</span>
+                        </div>
+                      )}
+                      {student.phone && (
+                        <div className="flex items-center gap-2">
+                          <Phone className="size-3" />
+                          <span>{student.phone}</span>
+                        </div>
+                      )}
                       {student.address && (
                         <div className="flex items-center gap-2">
                           <MapPin className="size-3" />
@@ -254,6 +267,11 @@ export function PeopleManagement({
                         <div className="flex items-center gap-2">
                           <BookOpen className="size-3" />
                           <span className="truncate">{student.career}</span>
+                        </div>
+                      )}
+                      {!student.email && !student.phone && !student.address && !student.career && !student.groups?.length && (
+                        <div className="text-gray-400 text-xs">
+                          Sin información adicional
                         </div>
                       )}
                       {student.groups && student.groups.length > 0 && (

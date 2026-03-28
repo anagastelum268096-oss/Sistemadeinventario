@@ -1,16 +1,10 @@
-export interface Instrument {
+export interface Category {
   id: string;
-  code: string; // Código/ID del instrumento
   name: string;
-  category: string;
-  quantity: number;
-  location: string; // Ubicación/almacenamiento
-  condition: 'Excelente' | 'Bueno' | 'Regular' | 'Necesita reparación';
-  notes?: string;
-  acquisitionDate?: string;
+  description?: string;
 }
 
-export interface Category {
+export interface GroupType {
   id: string;
   name: string;
   description?: string;
@@ -43,8 +37,8 @@ export interface Group {
 export interface Person {
   id: string;
   name: string;
-  email: string;
-  phone: string;
+  email?: string;
+  phone?: string;
   role: 'teacher' | 'student';
   groups?: string[]; // IDs de grupos
   age?: number; // Edad del alumno
@@ -55,11 +49,12 @@ export interface Person {
 export interface Presentation {
   id: string;
   title: string;
-  groupId: string;
+  groupIds: string[]; // Cambiado de groupId a groupIds para múltiples grupos
   date: Date;
   time: string;
   location: string;
-  description?: string;
+  description?: string; // Descripción general (legacy)
+  groupDescriptions?: { [groupId: string]: string }; // Descripciones específicas por grupo
   status: 'scheduled' | 'completed' | 'cancelled';
 }
 
@@ -74,7 +69,7 @@ export interface User {
 
 export interface AuthContextType {
   user: User | null;
-  login: (username: string, password: string) => boolean;
+  login: (email: string, password: string) => Promise<boolean>;
   logout: () => void;
   isAdmin: () => boolean;
   isTeacher: () => boolean;

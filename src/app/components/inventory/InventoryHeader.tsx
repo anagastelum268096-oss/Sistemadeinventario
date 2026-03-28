@@ -15,8 +15,8 @@ interface InventoryHeaderProps {
   categoryFilter: string;
   onCategoryChange: (value: string) => void;
   categories: string[];
-  onAddInstrument: (instrument: Omit<Instrument, 'id'>) => void;
-  onImportInstruments: (instruments: Instrument[]) => void;
+  onAddInstrument: (instrument: Omit<Instrument, 'id'>) => Promise<void>;
+  onImportInstruments: (instruments: Instrument[]) => Promise<void>;
   instruments: Instrument[];
 }
 
@@ -32,7 +32,7 @@ export function InventoryHeader({
 }: InventoryHeaderProps) {
   const [dialogOpen, setDialogOpen] = useState(false);
   const { isAdmin } = useAuth();
-
+  const { user } = useAuth();
   const handleExport = () => {
     exportInstrumentsToExcel(instruments);
   };

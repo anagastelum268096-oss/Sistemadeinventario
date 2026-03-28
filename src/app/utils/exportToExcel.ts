@@ -79,13 +79,20 @@ export const exportPeopleToExcel = (people: Person[]) => {
 
 export const exportPresentationsToExcel = (presentations: Presentation[], groups: Group[]) => {
   const data = presentations.map((presentation) => {
-    const group = groups.find((g) => g.id === presentation.groupId);
+    // Obtener los nombres de todos los grupos participantes
+    const groupNames = presentation.groupIds
+      ?.map((groupId) => {
+        const group = groups.find((g) => g.id === groupId);
+        return group?.name;
+      })
+      .filter(Boolean)
+      .join(', ') || 'Sin grupos asignados';
     
     return {
       'Título': presentation.title,
-      'Grupo': group?.name || 'Grupo eliminado',
+      'Grupos': groupNames,
       'Fecha': new Date(presentation.date).toLocaleDateString('es-MX'),
-      'Hora': presentation.time,
+      'Hora': presentation.time || '',
       'Ubicación': presentation.location,
       'Descripción': presentation.description || '',
       'Estado': presentation.status === 'scheduled' ? 'Programada' : 
