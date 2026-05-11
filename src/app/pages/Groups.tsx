@@ -11,11 +11,7 @@ import { importGroups, importTeachers, importStudents } from '@/app/utils/import
 import { ImportButton } from '@/app/components/ImportButton';
 import { useAuth } from '@/app/context/AuthContext';
 import { toast } from 'sonner';
-
-// Sin datos iniciales
-const initialTeachers: Person[] = [];
-const initialStudents: Person[] = [];
-const initialGroups: Group[] = [];
+import { supabase } from '@/supabase/config';
 
 export function Groups() {
   const [groups, setGroups] = useState<Group[]>([]);
@@ -26,217 +22,359 @@ export function Groups() {
   const [editingGroup, setEditingGroup] = useState<Group | null>(null);
   const { isAdmin } = useAuth();
 
-  // Cargar datos desde localStorage al iniciar
+  // Cargar datos desde Supabase
   useEffect(() => {
-    const savedGroups = localStorage.getItem('groups');
-    if (savedGroups) {
-      setGroups(JSON.parse(savedGroups));
-    } else {
-      setGroups(initialGroups);
-      localStorage.setItem('groups', JSON.stringify(initialGroups));
-    }
+    const fetchData = async () => {
+      try {
+        // Cargar grupos
+        const { data: groupsData, error: groupsError } = await supabase
+          .from('groups')
+          .select('*')
+          .order('created_at', { ascending: false });
 
-    const savedTeachers = localStorage.getItem('teachers');
-    if (savedTeachers) {
-      setTeachers(JSON.parse(savedTeachers));
-    } else {
-      setTeachers(initialTeachers);
-      localStorage.setItem('teachers', JSON.stringify(initialTeachers));
-    }
+        if (groupsError) throw groupsError;
 
-    const savedStudents = localStorage.getItem('students');
-    if (savedStudents) {
-      setStudents(JSON.parse(savedStudents));
-    } else {
-      setStudents(initialStudents);
-      localStorage.setItem('students', JSON.stringify(initialStudents));
-    }
+        // Convertir de snake_case a camelCase
+        const groupsMapped: Group[] = (groupsData || []).map((g: any) => ({
+          id: g.id,
+          name: g.name,
+          type: g.type,
+          teacherId: g.teacher_id,
+          studentIds: g.student_ids || [],
+          color: g.color,
+        }));
+        setGroups(groupsMapped);
+
+        // Cargar maestros (people con role='teacher')
+        const { data: teachersData, error: teachersError } = await supabase
+          .from('people')
+          .select('*')
+          .eq('role', 'teacher')
+          .order('created_at', { ascending: false });
+
+        if (teachersError) throw teachersError;
+
+        const teachersMapped: Person[] = (teachersData || []).map((p: any) => ({
+          id: p.id,
+          name: p.name,
+          email: p.email,
+          phone: p.phone,
+          role: p.role,
+          groups: p.group_ids || [],
+          age: p.age,
+          address: p.address,
+          career: p.career,
+        }));
+        setTeachers(teachersMapped);
+
+        // Cargar estudiantes (people con role='student')
+        const { data: studentsData, error: studentsError } = await supabase
+          .from('people')
+          .select('*')
+          .eq('role', 'student')
+          .order('created_at', { ascending: false });
+
+        if (studentsError) throw studentsError;
+
+        const studentsMapped: Person[] = (studentsData || []).map((p: any) => ({
+          id: p.id,
+          name: p.name,
+          email: p.email,
+          phone: p.phone,
+          role: p.role,
+          groups: p.group_ids || [],
+          age: p.age,
+          address: p.address,
+          career: p.career,
+        }));
+        setStudents(studentsMapped);
+      } catch (error) {
+        console.error('Error al cargar datos:', error);
+        toast.error('Error al cargar datos desde la base de datos');
+      }
+    };
+
+    fetchData();
+
+    // Suscribirse a cambios en tiempo real
+    const groupsChannel = supabase
+      .channel('groups-changes')
+      .on('postgres_changes',
+        { event: '*', schema: 'public', table: 'groups' },
+        () => { fetchData(); }
+      )
+      .subscribe();
+
+    const peopleChannel = supabase
+      .channel('people-changes')
+      .on('postgres_changes',
+        { event: '*', schema: 'public', table: 'people' },
+        () => { fetchData(); }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(groupsChannel);
+      supabase.removeChannel(peopleChannel);
+    };
   }, []);
 
-  const handleAddGroup = (group: Omit<Group, 'id'>) => {
-    const newGroup = {
-      ...group,
-      id: Date.now().toString(),
-    };
-    const updatedGroups = [...groups, newGroup];
-    setGroups(updatedGroups);
-    localStorage.setItem('groups', JSON.stringify(updatedGroups));
+  const handleAddGroup = async (group: Omit<Group, 'id'>) => {
+    try {
+      // Convertir de camelCase a snake_case
+      const { error } = await supabase
+        .from('groups')
+        .insert([{
+          name: group.name,
+          type: group.type,
+          teacher_id: group.teacherId,
+          student_ids: group.studentIds,
+          color: group.color,
+        }]);
+
+      if (error) throw error;
+      toast.success('Grupo agregado exitosamente');
+    } catch (error) {
+      console.error('Error al agregar grupo:', error);
+      toast.error('Error al agregar grupo');
+    }
   };
 
-  const handleUpdateGroup = (id: string, updated: Omit<Group, 'id'>) => {
-    const updatedGroups = groups.map((group) =>
-      group.id === id ? { ...updated, id } : group
-    );
-    setGroups(updatedGroups);
-    localStorage.setItem('groups', JSON.stringify(updatedGroups));
+  const handleUpdateGroup = async (id: string, updated: Omit<Group, 'id'>) => {
+    try {
+      // Convertir de camelCase a snake_case
+      const { error } = await supabase
+        .from('groups')
+        .update({
+          name: updated.name,
+          type: updated.type,
+          teacher_id: updated.teacherId,
+          student_ids: updated.studentIds,
+          color: updated.color,
+        })
+        .eq('id', id);
+
+      if (error) throw error;
+      toast.success('Grupo actualizado exitosamente');
+    } catch (error) {
+      console.error('Error al actualizar grupo:', error);
+      toast.error('Error al actualizar grupo');
+    }
   };
 
-  const handleDeleteGroup = (id: string) => {
-    const updatedGroups = groups.filter((g) => g.id !== id);
-    setGroups(updatedGroups);
-    localStorage.setItem('groups', JSON.stringify(updatedGroups));
+  const handleDeleteGroup = async (id: string) => {
+    try {
+      const { error } = await supabase
+        .from('groups')
+        .delete()
+        .eq('id', id);
+
+      if (error) throw error;
+      toast.success('Grupo eliminado exitosamente');
+    } catch (error) {
+      console.error('Error al eliminar grupo:', error);
+      toast.error('Error al eliminar grupo');
+    }
   };
 
-  const handleAddPerson = (person: Omit<Person, 'id'>) => {
-    const newPerson = {
-      ...person,
-      id: `${person.role === 'teacher' ? 't' : 's'}${Date.now()}`,
-    };
-    
-    if (person.role === 'teacher') {
-      const updatedTeachers = [...teachers, newPerson];
-      setTeachers(updatedTeachers);
-      localStorage.setItem('teachers', JSON.stringify(updatedTeachers));
-    } else {
-      const updatedStudents = [...students, newPerson];
-      setStudents(updatedStudents);
-      localStorage.setItem('students', JSON.stringify(updatedStudents));
-      
+  const handleAddPerson = async (person: Omit<Person, 'id'>) => {
+    try {
+      // Convertir de camelCase a snake_case
+      const { data, error } = await supabase
+        .from('people')
+        .insert([{
+          name: person.name,
+          email: person.email,
+          phone: person.phone,
+          role: person.role,
+          group_ids: person.groups || [],
+          age: person.age,
+          address: person.address,
+          career: person.career,
+        }])
+        .select()
+        .single();
+
+      if (error) throw error;
+
       // Si el alumno tiene un grupo asignado, agregarlo automáticamente al grupo
-      if (person.groups && person.groups.length > 0) {
+      if (person.role === 'student' && person.groups && person.groups.length > 0) {
         const groupId = person.groups[0];
-        const updatedGroups = groups.map((group) => {
-          if (group.id === groupId) {
-            return {
-              ...group,
-              studentIds: [...group.studentIds, newPerson.id],
-            };
-          }
-          return group;
-        });
-        setGroups(updatedGroups);
-        localStorage.setItem('groups', JSON.stringify(updatedGroups));
+        const group = groups.find((g) => g.id === groupId);
+        if (group) {
+          const updatedStudentIds = [...group.studentIds, data.id];
+          await supabase
+            .from('groups')
+            .update({ student_ids: updatedStudentIds })
+            .eq('id', groupId);
+        }
       }
+
+      toast.success(`${person.role === 'teacher' ? 'Maestro' : 'Alumno'} agregado exitosamente`);
+    } catch (error) {
+      console.error('Error al agregar persona:', error);
+      toast.error('Error al agregar persona');
     }
   };
 
-  const handleUpdatePerson = (id: string, updated: Omit<Person, 'id'>) => {
-    if (updated.role === 'teacher') {
-      const updatedTeachers = teachers.map((teacher) =>
-        teacher.id === id ? { ...updated, id } : teacher
-      );
-      setTeachers(updatedTeachers);
-      localStorage.setItem('teachers', JSON.stringify(updatedTeachers));
-    } else {
-      const oldStudent = students.find((s) => s.id === id);
-      const oldGroupId = oldStudent?.groups?.[0];
-      const newGroupId = updated.groups?.[0];
-      
-      // Actualizar el estudiante
-      const updatedStudents = students.map((student) =>
-        student.id === id ? { ...updated, id } : student
-      );
-      setStudents(updatedStudents);
-      localStorage.setItem('students', JSON.stringify(updatedStudents));
-      
-      // Si el grupo cambió, actualizar las listas de estudiantes en los grupos
-      if (oldGroupId !== newGroupId) {
-        const updatedGroups = groups.map((group) => {
+  const handleUpdatePerson = async (id: string, updated: Omit<Person, 'id'>) => {
+    try {
+      // Convertir de camelCase a snake_case
+      const { error } = await supabase
+        .from('people')
+        .update({
+          name: updated.name,
+          email: updated.email,
+          phone: updated.phone,
+          role: updated.role,
+          group_ids: updated.groups || [],
+          age: updated.age,
+          address: updated.address,
+          career: updated.career,
+        })
+        .eq('id', id);
+
+      if (error) throw error;
+
+      // Si es estudiante y el grupo cambió, actualizar las listas de estudiantes en los grupos
+      if (updated.role === 'student') {
+        const oldStudent = students.find((s) => s.id === id);
+        const oldGroupId = oldStudent?.groups?.[0];
+        const newGroupId = updated.groups?.[0];
+
+        if (oldGroupId !== newGroupId) {
           // Remover de grupo anterior
-          if (group.id === oldGroupId) {
-            return {
-              ...group,
-              studentIds: group.studentIds.filter((sid) => sid !== id),
-            };
+          if (oldGroupId) {
+            const oldGroup = groups.find((g) => g.id === oldGroupId);
+            if (oldGroup) {
+              const updatedStudentIds = oldGroup.studentIds.filter((sid) => sid !== id);
+              await supabase
+                .from('groups')
+                .update({ student_ids: updatedStudentIds })
+                .eq('id', oldGroupId);
+            }
           }
+
           // Agregar a grupo nuevo
-          if (group.id === newGroupId && !group.studentIds.includes(id)) {
-            return {
-              ...group,
-              studentIds: [...group.studentIds, id],
-            };
+          if (newGroupId) {
+            const newGroup = groups.find((g) => g.id === newGroupId);
+            if (newGroup && !newGroup.studentIds.includes(id)) {
+              const updatedStudentIds = [...newGroup.studentIds, id];
+              await supabase
+                .from('groups')
+                .update({ student_ids: updatedStudentIds })
+                .eq('id', newGroupId);
+            }
           }
-          return group;
-        });
-        setGroups(updatedGroups);
-        localStorage.setItem('groups', JSON.stringify(updatedGroups));
+        }
       }
+
+      toast.success(`${updated.role === 'teacher' ? 'Maestro' : 'Alumno'} actualizado exitosamente`);
+    } catch (error) {
+      console.error('Error al actualizar persona:', error);
+      toast.error('Error al actualizar persona');
     }
   };
 
-  const handleDeletePerson = (id: string, role: 'teacher' | 'student') => {
-    if (role === 'teacher') {
-      setTeachers(teachers.filter((t) => t.id !== id));
-    } else {
-      // Eliminar el estudiante de todos los grupos
-      const updatedGroups = groups.map((group) => ({
-        ...group,
-        studentIds: group.studentIds.filter((sid) => sid !== id),
-      }));
-      setGroups(updatedGroups);
-      setStudents(students.filter((s) => s.id !== id));
+  const handleDeletePerson = async (id: string, role: 'teacher' | 'student') => {
+    try {
+      // Si es estudiante, eliminar de todos los grupos primero
+      if (role === 'student') {
+        const studentGroups = groups.filter((g) => g.studentIds.includes(id));
+        for (const group of studentGroups) {
+          const updatedStudentIds = group.studentIds.filter((sid) => sid !== id);
+          await supabase
+            .from('groups')
+            .update({ student_ids: updatedStudentIds })
+            .eq('id', group.id);
+        }
+      }
+
+      // Eliminar la persona
+      const { error } = await supabase
+        .from('people')
+        .delete()
+        .eq('id', id);
+
+      if (error) throw error;
+      toast.success(`${role === 'teacher' ? 'Maestro' : 'Alumno'} eliminado exitosamente`);
+    } catch (error) {
+      console.error('Error al eliminar persona:', error);
+      toast.error('Error al eliminar persona');
     }
   };
 
   const handleImportGroups = async (file: File) => {
     try {
       const importedGroups = await importGroups(file);
-      const newTeachers: Person[] = [];
-      const processedGroups: Group[] = [];
-      
+      const newTeachersToInsert: any[] = [];
+      const processedGroups: any[] = [];
+
       // Procesar cada grupo importado
       for (const group of importedGroups) {
         const groupData = group as any;
         const teacherName = groupData.teacherName;
         let teacherId = '';
-        
+
         if (teacherName) {
           // Buscar si el maestro ya existe (por nombre)
           const existingTeacher = teachers.find(
             (t) => t.name.toLowerCase() === teacherName.toLowerCase()
           );
-          
+
           if (existingTeacher) {
             teacherId = existingTeacher.id;
           } else {
             // Verificar si ya lo creamos en esta importación
-            const newTeacher = newTeachers.find(
+            const newTeacher = newTeachersToInsert.find(
               (t) => t.name.toLowerCase() === teacherName.toLowerCase()
             );
-            
-            if (newTeacher) {
-              teacherId = newTeacher.id;
+
+            if (!newTeacher) {
+              // Crear nuevo maestro en Supabase
+              const { data, error } = await supabase
+                .from('people')
+                .insert([{
+                  name: teacherName,
+                  email: '',
+                  phone: '',
+                  role: 'teacher',
+                  group_ids: [],
+                }])
+                .select()
+                .single();
+
+              if (error) throw error;
+              teacherId = data.id;
+              newTeachersToInsert.push(data);
             } else {
-              // Crear nuevo maestro
-              const teacher: Person = {
-                id: `t${Date.now()}-${newTeachers.length}`,
-                name: teacherName,
-                email: '',
-                phone: '',
-                role: 'teacher',
-              };
-              newTeachers.push(teacher);
-              teacherId = teacher.id;
+              teacherId = newTeacher.id;
             }
           }
         }
-        
+
         // Crear el grupo con el teacherId correcto
         processedGroups.push({
-          id: group.id,
           name: group.name,
           type: group.type,
-          teacherId: teacherId,
-          studentIds: [],
+          teacher_id: teacherId,
+          student_ids: [],
           color: group.color,
         });
       }
-      
-      // Actualizar maestros si se crearon nuevos
-      if (newTeachers.length > 0) {
-        const updatedTeachers = [...teachers, ...newTeachers];
-        setTeachers(updatedTeachers);
-        localStorage.setItem('teachers', JSON.stringify(updatedTeachers));
+
+      // Insertar grupos en Supabase
+      if (processedGroups.length > 0) {
+        const { error } = await supabase
+          .from('groups')
+          .insert(processedGroups);
+
+        if (error) throw error;
       }
-      
-      // Actualizar grupos
-      const updatedGroups = [...groups, ...processedGroups];
-      setGroups(updatedGroups);
-      localStorage.setItem('groups', JSON.stringify(updatedGroups));
-      
+
       toast.success(
         `${processedGroups.length} grupos importados correctamente${
-          newTeachers.length > 0 ? ` (${newTeachers.length} maestros creados)` : ''
+          newTeachersToInsert.length > 0 ? ` (${newTeachersToInsert.length} maestros creados)` : ''
         }`
       );
     } catch (error) {
@@ -248,9 +386,24 @@ export function Groups() {
   const handleImportTeachers = async (file: File) => {
     try {
       const importedTeachers = await importTeachers(file);
-      const updatedTeachers = [...teachers, ...importedTeachers];
-      setTeachers(updatedTeachers);
-      localStorage.setItem('teachers', JSON.stringify(updatedTeachers));
+
+      // Convertir a formato Supabase
+      const teachersToInsert = importedTeachers.map((teacher) => ({
+        name: teacher.name,
+        email: teacher.email,
+        phone: teacher.phone,
+        role: 'teacher',
+        group_ids: teacher.groups || [],
+        age: teacher.age,
+        address: teacher.address,
+        career: teacher.career,
+      }));
+
+      const { error } = await supabase
+        .from('people')
+        .insert(teachersToInsert);
+
+      if (error) throw error;
       toast.success(`${importedTeachers.length} maestros importados correctamente`);
     } catch (error) {
       toast.error('Error al importar el archivo. Verifica el formato.');
@@ -261,9 +414,24 @@ export function Groups() {
   const handleImportStudents = async (file: File) => {
     try {
       const importedStudents = await importStudents(file);
-      const updatedStudents = [...students, ...importedStudents];
-      setStudents(updatedStudents);
-      localStorage.setItem('students', JSON.stringify(updatedStudents));
+
+      // Convertir a formato Supabase
+      const studentsToInsert = importedStudents.map((student) => ({
+        name: student.name,
+        email: student.email,
+        phone: student.phone,
+        role: 'student',
+        group_ids: student.groups || [],
+        age: student.age,
+        address: student.address,
+        career: student.career,
+      }));
+
+      const { error } = await supabase
+        .from('people')
+        .insert(studentsToInsert);
+
+      if (error) throw error;
       toast.success(`${importedStudents.length} alumnos importados correctamente`);
     } catch (error) {
       toast.error('Error al importar el archivo. Verifica el formato.');

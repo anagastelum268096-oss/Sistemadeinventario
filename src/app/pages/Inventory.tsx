@@ -2,8 +2,7 @@ import { useState, useMemo, useEffect } from 'react';
 import { Instrument } from '@/app/types';
 import { InventoryHeader } from '@/app/components/inventory/InventoryHeader';
 import { InstrumentList } from '@/app/components/inventory/InstrumentList';
-import { db } from '@/firebase/config';
-import { collection, onSnapshot, addDoc, updateDoc, deleteDoc, doc } from 'firebase/firestore';
+import { supabase } from '@/supabase/config';
 import { toast } from 'sonner';
 import { useAuth } from '../context/AuthContext'; 
 
@@ -14,32 +13,41 @@ export function Inventory() {
   const [categoryFilter, setCategoryFilter] = useState('all');
   const [loading, setLoading] = useState(true);
 
-  // Cargar datos de Firestore en tiempo real
+  // Cargar datos de Supabase en tiempo real
   useEffect(() => {
-    const unsubscribe = onSnapshot(
-      collection(db, 'inventario'),
-      (snapshot) => {
-        const instrumentsData: Instrument[] = [];
-        snapshot.forEach((doc) => {
-          instrumentsData.push({
-            id: doc.id,
-            ...doc.data()
-          } as Instrument);
-        });
-        setInstruments(instrumentsData);
-        setLoading(false);
-      },
-      (error) => {
+    const fetchInstruments = async () => {
+      const { data, error } = await supabase
+        .from('instruments')
+        .select('*')
+        .order('created_at', { ascending: false });
+
+      if (error) {
         console.error('Error al cargar instrumentos:', error);
         toast.error('Error al cargar el inventario', {
           description: 'No se pudieron cargar los instrumentos desde la base de datos'
         });
-        setLoading(false);
+      } else {
+        setInstruments(data || []);
       }
-    );
+      setLoading(false);
+    };
 
-    // Cleanup
-    return () => unsubscribe();
+    fetchInstruments();
+
+    // Suscribirse a cambios en tiempo real
+    const channel = supabase
+      .channel('instruments-changes')
+      .on('postgres_changes',
+        { event: '*', schema: 'public', table: 'instruments' },
+        () => {
+          fetchInstruments();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
   }, []);
 
   const categories = useMemo(() => {
@@ -61,7 +69,11 @@ export function Inventory() {
 
   const handleAddInstrument = async (instrument: Omit<Instrument, 'id'>) => {
     try {
-      await addDoc(collection(db, 'inventario'), instrument);
+      const { error } = await supabase
+        .from('instruments')
+        .insert([instrument]);
+
+      if (error) throw error;
       toast.success('Instrumento agregado exitosamente');
     } catch (error) {
       console.error('Error al agregar instrumento:', error);
@@ -73,10 +85,12 @@ export function Inventory() {
 
   const handleImportInstruments = async (importedInstruments: Instrument[]) => {
     try {
-      const promises = importedInstruments.map(({ id, ...instrument }) =>
-        addDoc(collection(db, 'inventario'), instrument)
-      );
-      await Promise.all(promises);
+      const instrumentsToInsert = importedInstruments.map(({ id, ...instrument }) => instrument);
+      const { error } = await supabase
+        .from('instruments')
+        .insert(instrumentsToInsert);
+
+      if (error) throw error;
       toast.success(`${importedInstruments.length} instrumentos importados exitosamente`);
     } catch (error) {
       console.error('Error al importar instrumentos:', error);
@@ -88,8 +102,12 @@ export function Inventory() {
 
   const handleUpdateInstrument = async (id: string, updated: Omit<Instrument, 'id'>) => {
     try {
-      const instrumentRef = doc(db, 'inventario', id);
-      await updateDoc(instrumentRef, updated as any);
+      const { error } = await supabase
+        .from('instruments')
+        .update(updated)
+        .eq('id', id);
+
+      if (error) throw error;
       toast.success('Instrumento actualizado exitosamente');
     } catch (error) {
       console.error('Error al actualizar instrumento:', error);
@@ -101,7 +119,12 @@ export function Inventory() {
 
   const handleDeleteInstrument = async (id: string) => {
     try {
-      await deleteDoc(doc(db, 'inventario', id));
+      const { error } = await supabase
+        .from('instruments')
+        .delete()
+        .eq('id', id);
+
+      if (error) throw error;
       toast.success('Instrumento eliminado exitosamente');
     } catch (error) {
       console.error('Error al eliminar instrumento:', error);

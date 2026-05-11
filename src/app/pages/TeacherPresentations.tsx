@@ -4,6 +4,8 @@ import { Presentation, Group, Person } from '@/app/types';
 import { format, isPast, isFuture, differenceInDays } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { exportPresentationsToExcel } from '@/app/utils/exportToExcel';
+import { supabase } from '@/supabase/config';
+import { toast } from 'sonner';
 
 // Datos de ejemplo (debiendo compartirse con el estado global en una app real)
 const sampleTeachers: Person[] = [
@@ -98,66 +100,112 @@ export function TeacherPresentations() {
   const [groups, setGroups] = useState<Group[]>([]);
   const [presentations, setPresentations] = useState<Presentation[]>([]);
 
-  // Cargar datos desde localStorage
+  // Cargar datos desde Supabase
   useEffect(() => {
-    const loadData = () => {
-      const savedTeachers = localStorage.getItem('teachers');
-      if (savedTeachers) {
-        const loadedTeachers = JSON.parse(savedTeachers);
-        setTeachers(loadedTeachers);
-        if (loadedTeachers.length > 0 && !selectedTeacherId) {
-          setSelectedTeacherId(loadedTeachers[0].id);
+    const fetchData = async () => {
+      try {
+        // Cargar maestros (people con role='teacher')
+        const { data: teachersData, error: teachersError } = await supabase
+          .from('people')
+          .select('*')
+          .eq('role', 'teacher')
+          .order('created_at', { ascending: false });
+
+        if (teachersError) throw teachersError;
+
+        const teachersMapped: Person[] = (teachersData || []).map((p: any) => ({
+          id: p.id,
+          name: p.name,
+          email: p.email,
+          phone: p.phone,
+          role: p.role,
+          groups: p.group_ids || [],
+          age: p.age,
+          address: p.address,
+          career: p.career,
+        }));
+        setTeachers(teachersMapped);
+
+        // Seleccionar el primer maestro si no hay uno seleccionado
+        if (teachersMapped.length > 0 && !selectedTeacherId) {
+          setSelectedTeacherId(teachersMapped[0].id);
         }
-      } else {
-        setTeachers(sampleTeachers);
-        if (!selectedTeacherId) {
-          setSelectedTeacherId(sampleTeachers[0].id);
-        }
-      }
 
-      const savedGroups = localStorage.getItem('groups');
-      if (savedGroups) {
-        setGroups(JSON.parse(savedGroups));
-      } else {
-        setGroups(sampleGroups);
-      }
+        // Cargar grupos
+        const { data: groupsData, error: groupsError } = await supabase
+          .from('groups')
+          .select('*')
+          .order('created_at', { ascending: false });
 
-      const savedPresentations = localStorage.getItem('presentations');
-      if (savedPresentations) {
-        const parsed = JSON.parse(savedPresentations);
-        setPresentations(
-          parsed.map((pres: any) => ({
-            ...pres,
-            date: new Date(pres.date),
-          }))
-        );
-      } else {
-        setPresentations(samplePresentations);
+        if (groupsError) throw groupsError;
+
+        const groupsMapped: Group[] = (groupsData || []).map((g: any) => ({
+          id: g.id,
+          name: g.name,
+          type: g.type,
+          teacherId: g.teacher_id,
+          studentIds: g.student_ids || [],
+          color: g.color,
+        }));
+        setGroups(groupsMapped);
+
+        // Cargar presentaciones
+        const { data: presentationsData, error: presentationsError } = await supabase
+          .from('presentations')
+          .select('*')
+          .order('date', { ascending: true });
+
+        if (presentationsError) throw presentationsError;
+
+        const presentationsMapped: Presentation[] = (presentationsData || []).map((p: any) => ({
+          id: p.id,
+          title: p.title,
+          groupIds: p.group_ids || [],
+          date: new Date(p.date),
+          time: p.time,
+          location: p.location,
+          description: p.description,
+          groupDescriptions: p.group_descriptions,
+          status: p.status,
+        }));
+        setPresentations(presentationsMapped);
+      } catch (error) {
+        console.error('Error al cargar datos:', error);
+        toast.error('Error al cargar datos desde la base de datos');
       }
     };
 
-    // Cargar datos inicialmente
-    loadData();
+    fetchData();
 
-    // Escuchar cambios en localStorage (cuando se actualiza desde otra pestaña o componente)
-    const handleStorageChange = (e: StorageEvent) => {
-      if (e.key === 'presentations' || e.key === 'groups' || e.key === 'teachers') {
-        loadData();
-      }
-    };
+    // Suscribirse a cambios en tiempo real
+    const peopleChannel = supabase
+      .channel('people-changes-teacher-presentations')
+      .on('postgres_changes',
+        { event: '*', schema: 'public', table: 'people' },
+        () => { fetchData(); }
+      )
+      .subscribe();
 
-    window.addEventListener('storage', handleStorageChange);
+    const groupsChannel = supabase
+      .channel('groups-changes-teacher-presentations')
+      .on('postgres_changes',
+        { event: '*', schema: 'public', table: 'groups' },
+        () => { fetchData(); }
+      )
+      .subscribe();
 
-    // También escuchar cambios personalizados en el mismo contexto
-    const handleCustomStorageChange = () => {
-      loadData();
-    };
-
-    window.addEventListener('localStorageUpdate', handleCustomStorageChange);
+    const presentationsChannel = supabase
+      .channel('presentations-changes')
+      .on('postgres_changes',
+        { event: '*', schema: 'public', table: 'presentations' },
+        () => { fetchData(); }
+      )
+      .subscribe();
 
     return () => {
-      window.removeEventListener('storage', handleStorageChange);
-      window.removeEventListener('localStorageUpdate', handleCustomStorageChange);
+      supabase.removeChannel(peopleChannel);
+      supabase.removeChannel(groupsChannel);
+      supabase.removeChannel(presentationsChannel);
     };
   }, []);
 

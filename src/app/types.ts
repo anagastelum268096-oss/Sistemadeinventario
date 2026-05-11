@@ -1,3 +1,15 @@
+export interface Instrument {
+  id: string;
+  code: string;
+  name: string;
+  category: string;
+  quantity: number;
+  location: string;
+  condition: string;
+  notes?: string;
+  acquisitionDate?: string;
+}
+
 export interface Category {
   id: string;
   name: string;

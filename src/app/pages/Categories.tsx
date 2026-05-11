@@ -10,6 +10,7 @@ import { importCategories } from '@/app/utils/importFromExcel';
 import { ImportButton } from '@/app/components/ImportButton';
 import { useAuth } from '@/app/context/AuthContext';
 import { toast } from 'sonner';
+import { supabase } from '@/supabase/config';
 
 export function Categories() {
   const [categories, setCategories] = useState<Category[]>([]);
@@ -19,85 +20,155 @@ export function Categories() {
   const { isAdmin } = useAuth();
 
   useEffect(() => {
-    const saved = localStorage.getItem('categories');
-    if (saved) {
-      setCategories(JSON.parse(saved));
-    } else {
-      // Sin categorías iniciales
-      const defaultCategories: Category[] = [];
-      setCategories(defaultCategories);
-      localStorage.setItem('categories', JSON.stringify(defaultCategories));
-    }
+    const fetchData = async () => {
+      try {
+        // Cargar categorías
+        const { data: categoriesData, error: categoriesError } = await supabase
+          .from('categories')
+          .select('*')
+          .order('created_at', { ascending: false });
 
-    const savedGroupTypes = localStorage.getItem('groupTypes');
-    if (savedGroupTypes) {
-      setGroupTypes(JSON.parse(savedGroupTypes));
-    } else {
-      // Sin tipos de grupo iniciales
-      const defaultGroupTypes: GroupType[] = [];
-      setGroupTypes(defaultGroupTypes);
-      localStorage.setItem('groupTypes', JSON.stringify(defaultGroupTypes));
-    }
+        if (categoriesError) throw categoriesError;
+        setCategories(categoriesData || []);
+
+        // Cargar tipos de grupo (también en tabla categories, pero con un campo type diferente si es necesario)
+        // Nota: Asumo que groupTypes también se guardan en la tabla 'categories'
+        // Si necesitas una tabla separada, ajusta esto
+        const { data: groupTypesData, error: groupTypesError } = await supabase
+          .from('categories')
+          .select('*')
+          .order('created_at', { ascending: false });
+
+        if (groupTypesError) throw groupTypesError;
+        setGroupTypes(groupTypesData || []);
+      } catch (error) {
+        console.error('Error al cargar datos:', error);
+        toast.error('Error al cargar datos desde la base de datos');
+      }
+    };
+
+    fetchData();
+
+    // Suscribirse a cambios en tiempo real
+    const categoriesChannel = supabase
+      .channel('categories-changes')
+      .on('postgres_changes',
+        { event: '*', schema: 'public', table: 'categories' },
+        () => { fetchData(); }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(categoriesChannel);
+    };
   }, []);
 
-  const handleAddCategory = (newCategory: Omit<Category, 'id'>) => {
-    const category: Category = {
-      ...newCategory,
-      id: Date.now().toString(),
-    };
-    const updated = [...categories, category];
-    setCategories(updated);
-    localStorage.setItem('categories', JSON.stringify(updated));
-    toast.success('Categoría agregada exitosamente');
+  const handleAddCategory = async (newCategory: Omit<Category, 'id'>) => {
+    try {
+      const { error } = await supabase
+        .from('categories')
+        .insert([newCategory]);
+
+      if (error) throw error;
+      toast.success('Categoría agregada exitosamente');
+    } catch (error) {
+      console.error('Error al agregar categoría:', error);
+      toast.error('Error al agregar categoría');
+    }
   };
 
-  const handleAddGroupType = (newGroupType: Omit<GroupType, 'id'>) => {
-    const groupType: GroupType = {
-      ...newGroupType,
-      id: Date.now().toString(),
-    };
-    const updated = [...groupTypes, groupType];
-    setGroupTypes(updated);
-    localStorage.setItem('groupTypes', JSON.stringify(updated));
-    toast.success('Tipo de grupo agregado exitosamente');
+  const handleAddGroupType = async (newGroupType: Omit<GroupType, 'id'>) => {
+    try {
+      const { error } = await supabase
+        .from('categories')
+        .insert([newGroupType]);
+
+      if (error) throw error;
+      toast.success('Tipo de grupo agregado exitosamente');
+    } catch (error) {
+      console.error('Error al agregar tipo de grupo:', error);
+      toast.error('Error al agregar tipo de grupo');
+    }
   };
 
-  const handleUpdateCategory = (updatedCategory: Category) => {
-    const updated = categories.map((cat) =>
-      cat.id === updatedCategory.id ? updatedCategory : cat
-    );
-    setCategories(updated);
-    localStorage.setItem('categories', JSON.stringify(updated));
-    toast.success('Categoría actualizada exitosamente');
+  const handleUpdateCategory = async (updatedCategory: Category) => {
+    try {
+      const { error } = await supabase
+        .from('categories')
+        .update({
+          name: updatedCategory.name,
+          description: updatedCategory.description,
+        })
+        .eq('id', updatedCategory.id);
+
+      if (error) throw error;
+      toast.success('Categoría actualizada exitosamente');
+    } catch (error) {
+      console.error('Error al actualizar categoría:', error);
+      toast.error('Error al actualizar categoría');
+    }
   };
 
-  const handleUpdateGroupType = (updatedGroupType: GroupType) => {
-    const updated = groupTypes.map((gt) =>
-      gt.id === updatedGroupType.id ? updatedGroupType : gt
-    );
-    setGroupTypes(updated);
-    localStorage.setItem('groupTypes', JSON.stringify(updated));
-    toast.success('Tipo de grupo actualizado exitosamente');
+  const handleUpdateGroupType = async (updatedGroupType: GroupType) => {
+    try {
+      const { error } = await supabase
+        .from('categories')
+        .update({
+          name: updatedGroupType.name,
+          description: updatedGroupType.description,
+        })
+        .eq('id', updatedGroupType.id);
+
+      if (error) throw error;
+      toast.success('Tipo de grupo actualizado exitosamente');
+    } catch (error) {
+      console.error('Error al actualizar tipo de grupo:', error);
+      toast.error('Error al actualizar tipo de grupo');
+    }
   };
 
-  const handleDeleteCategory = (id: string) => {
-    const updated = categories.filter((cat) => cat.id !== id);
-    setCategories(updated);
-    localStorage.setItem('categories', JSON.stringify(updated));
+  const handleDeleteCategory = async (id: string) => {
+    try {
+      const { error } = await supabase
+        .from('categories')
+        .delete()
+        .eq('id', id);
+
+      if (error) throw error;
+      toast.success('Categoría eliminada exitosamente');
+    } catch (error) {
+      console.error('Error al eliminar categoría:', error);
+      toast.error('Error al eliminar categoría');
+    }
   };
 
-  const handleDeleteGroupType = (id: string) => {
-    const updated = groupTypes.filter((gt) => gt.id !== id);
-    setGroupTypes(updated);
-    localStorage.setItem('groupTypes', JSON.stringify(updated));
+  const handleDeleteGroupType = async (id: string) => {
+    try {
+      const { error } = await supabase
+        .from('categories')
+        .delete()
+        .eq('id', id);
+
+      if (error) throw error;
+      toast.success('Tipo de grupo eliminado exitosamente');
+    } catch (error) {
+      console.error('Error al eliminar tipo de grupo:', error);
+      toast.error('Error al eliminar tipo de grupo');
+    }
   };
 
   const handleImportCategories = async (file: File) => {
     try {
       const importedCategories = await importCategories(file);
-      const updated = [...categories, ...importedCategories];
-      setCategories(updated);
-      localStorage.setItem('categories', JSON.stringify(updated));
+
+      // Convertir a formato Supabase (remover id)
+      const categoriesToInsert = importedCategories.map(({ id, ...category }) => category);
+
+      const { error } = await supabase
+        .from('categories')
+        .insert(categoriesToInsert);
+
+      if (error) throw error;
       toast.success(`${importedCategories.length} categorías importadas correctamente`);
     } catch (error) {
       toast.error('Error al importar el archivo. Verifica el formato.');
@@ -108,9 +179,15 @@ export function Categories() {
   const handleImportGroupTypes = async (file: File) => {
     try {
       const importedTypes = await importCategories(file); // Usa la misma función
-      const updated = [...groupTypes, ...importedTypes];
-      setGroupTypes(updated);
-      localStorage.setItem('groupTypes', JSON.stringify(updated));
+
+      // Convertir a formato Supabase (remover id)
+      const typesToInsert = importedTypes.map(({ id, ...type }) => type);
+
+      const { error } = await supabase
+        .from('categories')
+        .insert(typesToInsert);
+
+      if (error) throw error;
       toast.success(`${importedTypes.length} tipos de grupo importados correctamente`);
     } catch (error) {
       toast.error('Error al importar el archivo. Verifica el formato.');

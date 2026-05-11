@@ -11,10 +11,8 @@ import { importPresentations } from '@/app/utils/importFromExcel';
 import { ImportButton } from '@/app/components/ImportButton';
 import { useAuth } from '@/app/context/AuthContext';
 import { toast } from 'sonner';
+import { supabase } from '@/supabase/config';
 
-// ¡NUEVOS IMPORTS DE FIREBASE!
-import { collection, getDocs, doc, setDoc, deleteDoc } from 'firebase/firestore';
-import { db } from "../../firebase/config";
 export function Calendar() {
   const [currentMonth, setCurrentMonth] = useState(new Date());
   const [presentations, setPresentations] = useState<Presentation[]>([]);
@@ -24,30 +22,33 @@ export function Calendar() {
   const [editingPresentation, setEditingPresentation] = useState<Presentation | null>(null);
   const { isAdmin } = useAuth();
 
-  // Cargar datos desde FIREBASE al iniciar
+  // Cargar datos desde Supabase al iniciar
   useEffect(() => {
     const fetchData = async () => {
       try {
         // 1. Cargar Grupos
-        const groupsSnap = await getDocs(collection(db, 'groups'));
-        const loadedGroups = groupsSnap.docs.map(doc => ({ id: doc.id, ...doc.data() })) as Group[];
-        setGroups(loadedGroups);
+        const { data: groupsData, error: groupsError } = await supabase
+          .from('groups')
+          .select('*');
+
+        if (groupsError) throw groupsError;
+        setGroups(groupsData || []);
 
         // 2. Cargar Presentaciones
-        const presSnap = await getDocs(collection(db, 'presentations'));
-        const loadedPres = presSnap.docs.map(doc => {
-          const data = doc.data();
-          return {
-            id: doc.id,
-            ...data,
-            // Convertir la fecha de Firebase a una fecha de Javascript
-            date: data.date?.toDate ? data.date.toDate() : new Date(data.date)
-          };
-        }) as Presentation[];
-        
+        const { data: presData, error: presError } = await supabase
+          .from('presentations')
+          .select('*');
+
+        if (presError) throw presError;
+
+        const loadedPres = (presData || []).map(pres => ({
+          ...pres,
+          date: new Date(pres.date)
+        })) as Presentation[];
+
         setPresentations(loadedPres.filter(p => p.title));
       } catch (error) {
-        console.error("Error al cargar datos de Firebase:", error);
+        console.error("Error al cargar datos de Supabase:", error);
         toast.error("Error al cargar el calendario desde la nube");
       }
     };
@@ -78,13 +79,18 @@ export function Calendar() {
     return presentationsByDate.get(dateKey) || [];
   }, [selectedDate, presentationsByDate]);
 
-  // Guardar nueva presentación en Firebase
+  // Guardar nueva presentación en Supabase
   const handleAddPresentation = async (presentation: Omit<Presentation, 'id'>) => {
     try {
-      const newId = Date.now().toString();
-      const newPresentation = { ...presentation, id: newId };
-      
-      await setDoc(doc(db, 'presentations', newId), newPresentation);
+      const { data, error } = await supabase
+        .from('presentations')
+        .insert([presentation])
+        .select()
+        .single();
+
+      if (error) throw error;
+
+      const newPresentation = { ...data, date: new Date(data.date) } as Presentation;
       setPresentations(prev => [...prev, newPresentation]);
       toast.success("Presentación guardada exitosamente");
     } catch (error) {
@@ -93,21 +99,31 @@ export function Calendar() {
     }
   };
 
-  // Actualizar presentación en Firebase
+  // Actualizar presentación en Supabase
   const handleUpdatePresentation = async (id: string, updated: Omit<Presentation, 'id'>) => {
     try {
-      await setDoc(doc(db, 'presentations', id), { ...updated, id }, { merge: true });
-      setPresentations(prev => prev.map(p => p.id === id ? { ...updated, id } : p));
+      const { error } = await supabase
+        .from('presentations')
+        .update(updated)
+        .eq('id', id);
+
+      if (error) throw error;
+      setPresentations(prev => prev.map(p => p.id === id ? { ...updated, id } as Presentation : p));
       toast.success("Presentación actualizada");
     } catch (error) {
       toast.error("Error al actualizar en la nube");
     }
   };
 
-  // Eliminar presentación de Firebase
+  // Eliminar presentación de Supabase
   const handleDeletePresentation = async (id: string) => {
     try {
-      await deleteDoc(doc(db, 'presentations', id));
+      const { error } = await supabase
+        .from('presentations')
+        .delete()
+        .eq('id', id);
+
+      if (error) throw error;
       setPresentations(prev => prev.filter(p => p.id !== id));
       toast.success("Presentación eliminada");
     } catch (error) {
@@ -161,16 +177,22 @@ export function Calendar() {
         });
       }
       
-      // Guardar grupos nuevos en Firebase
-      for (const group of newGroups) {
-        await setDoc(doc(db, 'groups', group.id), group);
+      // Guardar grupos nuevos en Supabase
+      if (newGroups.length > 0) {
+        const { error: groupsError } = await supabase
+          .from('groups')
+          .insert(newGroups);
+
+        if (groupsError) throw groupsError;
+        setGroups(prev => [...prev, ...newGroups]);
       }
-      if (newGroups.length > 0) setGroups(prev => [...prev, ...newGroups]);
-      
-      // Guardar presentaciones en Firebase
-      for (const pres of processedPresentations) {
-        await setDoc(doc(db, 'presentations', pres.id), pres);
-      }
+
+      // Guardar presentaciones en Supabase
+      const { error: presError } = await supabase
+        .from('presentations')
+        .insert(processedPresentations);
+
+      if (presError) throw presError;
       setPresentations(prev => [...prev, ...processedPresentations]);
       
       toast.success(`${processedPresentations.length} presentaciones importadas correctamente`);

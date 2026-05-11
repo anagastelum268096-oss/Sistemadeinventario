@@ -1,12 +1,6 @@
 import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { User, AuthContextType } from '@/app/types';
-import { auth } from '@/firebase/config';
-import { 
-  signInWithEmailAndPassword, 
-  signOut as firebaseSignOut, 
-  onAuthStateChanged,
-  User as FirebaseUser
-} from 'firebase/auth';
+import { supabase } from '@/supabase/config';
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
@@ -21,47 +15,68 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // Escuchar cambios en el estado de autenticación de Firebase
-    const unsubscribe = onAuthStateChanged(auth, (firebaseUser: FirebaseUser | null) => {
-      if (firebaseUser) {
-        // Usuario autenticado en Firebase
+    // Verificar sesión actual
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (session?.user) {
         const appUser: User = {
-          id: firebaseUser.uid,
-          username: firebaseUser.email?.split('@')[0] || 'user',
-          password: '', // No almacenamos la contraseña
-          role: getRoleFromEmail(firebaseUser.email || ''),
-          name: firebaseUser.displayName || firebaseUser.email?.split('@')[0] || 'Usuario',
-          email: firebaseUser.email || undefined,
+          id: session.user.id,
+          username: session.user.email?.split('@')[0] || 'user',
+          password: '',
+          role: getRoleFromEmail(session.user.email || ''),
+          name: session.user.user_metadata?.name || session.user.email?.split('@')[0] || 'Usuario',
+          email: session.user.email || undefined,
         };
         setUser(appUser);
-      } else {
-        // Usuario no autenticado
-        setUser(null);
       }
       setLoading(false);
     });
 
-    // Cleanup
-    return () => unsubscribe();
+    // Escuchar cambios en el estado de autenticación
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (session?.user) {
+        const appUser: User = {
+          id: session.user.id,
+          username: session.user.email?.split('@')[0] || 'user',
+          password: '',
+          role: getRoleFromEmail(session.user.email || ''),
+          name: session.user.user_metadata?.name || session.user.email?.split('@')[0] || 'Usuario',
+          email: session.user.email || undefined,
+        };
+        setUser(appUser);
+      } else {
+        setUser(null);
+      }
+    });
+
+    return () => subscription.unsubscribe();
   }, []);
 
   const login = async (email: string, password: string): Promise<boolean> => {
     try {
-      const userCredential = await signInWithEmailAndPassword(auth, email, password);
-      const firebaseUser = userCredential.user;
-      
-      // Crear objeto User de la aplicación
-      const appUser: User = {
-        id: firebaseUser.uid,
-        username: firebaseUser.email?.split('@')[0] || 'user',
-        password: '', // No almacenamos la contraseña
-        role: getRoleFromEmail(firebaseUser.email || ''),
-        name: firebaseUser.displayName || firebaseUser.email?.split('@')[0] || 'Usuario',
-        email: firebaseUser.email || undefined,
-      };
-      
-      setUser(appUser);
-      return true;
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email,
+        password,
+      });
+
+      if (error) {
+        console.error('Error al iniciar sesión:', error);
+        return false;
+      }
+
+      if (data.user) {
+        const appUser: User = {
+          id: data.user.id,
+          username: data.user.email?.split('@')[0] || 'user',
+          password: '',
+          role: getRoleFromEmail(data.user.email || ''),
+          name: data.user.user_metadata?.name || data.user.email?.split('@')[0] || 'Usuario',
+          email: data.user.email || undefined,
+        };
+        setUser(appUser);
+        return true;
+      }
+
+      return false;
     } catch (error: any) {
       console.error('Error al iniciar sesión:', error);
       return false;
@@ -70,7 +85,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const logout = async () => {
     try {
-      await firebaseSignOut(auth);
+      await supabase.auth.signOut();
       setUser(null);
     } catch (error) {
       console.error('Error al cerrar sesión:', error);

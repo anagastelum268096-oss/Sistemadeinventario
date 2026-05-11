@@ -9,6 +9,7 @@ import { importLoans } from '@/app/utils/importFromExcel';
 import { ImportButton } from '@/app/components/ImportButton';
 import { useAuth } from '@/app/context/AuthContext';
 import { toast } from 'sonner';
+import { supabase } from '@/supabase/config';
 
 export function Loans() {
   const [loans, setLoans] = useState<Loan[]>([]);
@@ -17,88 +18,196 @@ export function Loans() {
   const { isAdmin } = useAuth();
 
   useEffect(() => {
-    const savedLoans = localStorage.getItem('loans');
-    if (savedLoans) {
-      const parsed = JSON.parse(savedLoans);
-      setLoans(
-        parsed.map((loan: any) => ({
-          ...loan,
-          loanDate: new Date(loan.loanDate),
-          expectedReturnDate: new Date(loan.expectedReturnDate),
-          actualReturnDate: loan.actualReturnDate ? new Date(loan.actualReturnDate) : undefined,
-        }))
-      );
-    }
+    const fetchData = async () => {
+      try {
+        // Cargar préstamos
+        const { data: loansData, error: loansError } = await supabase
+          .from('loans')
+          .select('*')
+          .order('created_at', { ascending: false });
 
-    const savedInstruments = localStorage.getItem('instruments');
-    if (savedInstruments) {
-      setInstruments(JSON.parse(savedInstruments));
-    }
+        if (loansError) throw loansError;
 
-    // Verificar préstamos vencidos
-    updateLoanStatuses();
+        // Convertir de snake_case a camelCase y fechas
+        const loansMapped: Loan[] = (loansData || []).map((l: any) => ({
+          id: l.id,
+          instrumentId: l.instrument_id,
+          instrumentName: l.instrument_name,
+          borrowerName: l.borrower_name,
+          borrowerEmail: l.borrower_email,
+          borrowerPhone: l.borrower_phone,
+          loanDate: new Date(l.loan_date),
+          expectedReturnDate: new Date(l.expected_return_date),
+          actualReturnDate: l.actual_return_date ? new Date(l.actual_return_date) : undefined,
+          quantity: l.quantity,
+          status: l.status,
+          notes: l.notes,
+        }));
+        setLoans(loansMapped);
+
+        // Cargar instrumentos
+        const { data: instrumentsData, error: instrumentsError } = await supabase
+          .from('instruments')
+          .select('*')
+          .order('created_at', { ascending: false });
+
+        if (instrumentsError) throw instrumentsError;
+        setInstruments(instrumentsData || []);
+
+        // Verificar préstamos vencidos
+        await updateLoanStatuses();
+      } catch (error) {
+        console.error('Error al cargar datos:', error);
+        toast.error('Error al cargar datos desde la base de datos');
+      }
+    };
+
+    fetchData();
+
+    // Suscribirse a cambios en tiempo real
+    const loansChannel = supabase
+      .channel('loans-changes')
+      .on('postgres_changes',
+        { event: '*', schema: 'public', table: 'loans' },
+        () => { fetchData(); }
+      )
+      .subscribe();
+
+    const instrumentsChannel = supabase
+      .channel('instruments-changes-loans')
+      .on('postgres_changes',
+        { event: '*', schema: 'public', table: 'instruments' },
+        () => { fetchData(); }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(loansChannel);
+      supabase.removeChannel(instrumentsChannel);
+    };
   }, []);
 
-  const updateLoanStatuses = () => {
-    const savedLoans = localStorage.getItem('loans');
-    if (!savedLoans) return;
+  const updateLoanStatuses = async () => {
+    try {
+      const { data: activeLoans, error } = await supabase
+        .from('loans')
+        .select('*')
+        .eq('status', 'active');
 
-    const parsed = JSON.parse(savedLoans);
-    const now = new Date();
-    let updated = false;
+      if (error) throw error;
 
-    const updatedLoans = parsed.map((loan: any) => {
-      if (loan.status === 'active') {
-        const expectedReturn = new Date(loan.expectedReturnDate);
-        if (now > expectedReturn) {
-          updated = true;
-          return { ...loan, status: 'overdue' };
-        }
+      const now = new Date();
+      const overdueLoans = (activeLoans || []).filter((loan: any) => {
+        const expectedReturn = new Date(loan.expected_return_date);
+        return now > expectedReturn;
+      });
+
+      // Actualizar préstamos vencidos
+      for (const loan of overdueLoans) {
+        await supabase
+          .from('loans')
+          .update({ status: 'overdue' })
+          .eq('id', loan.id);
       }
-      return loan;
-    });
-
-    if (updated) {
-      localStorage.setItem('loans', JSON.stringify(updatedLoans));
-      setLoans(
-        updatedLoans.map((loan: any) => ({
-          ...loan,
-          loanDate: new Date(loan.loanDate),
-          expectedReturnDate: new Date(loan.expectedReturnDate),
-          actualReturnDate: loan.actualReturnDate ? new Date(loan.actualReturnDate) : undefined,
-        }))
-      );
+    } catch (error) {
+      console.error('Error al actualizar estado de préstamos:', error);
     }
   };
 
-  const handleAddLoan = (newLoan: Omit<Loan, 'id'>) => {
-    const loan: Loan = {
-      ...newLoan,
-      id: Date.now().toString(),
-    };
-    const updatedLoans = [...loans, loan];
-    setLoans(updatedLoans);
-    localStorage.setItem('loans', JSON.stringify(updatedLoans));
-    toast.success('Préstamo registrado exitosamente');
+  const handleAddLoan = async (newLoan: Omit<Loan, 'id'>) => {
+    try {
+      // Convertir de camelCase a snake_case
+      const { error } = await supabase
+        .from('loans')
+        .insert([{
+          instrument_id: newLoan.instrumentId,
+          instrument_name: newLoan.instrumentName,
+          borrower_name: newLoan.borrowerName,
+          borrower_email: newLoan.borrowerEmail,
+          borrower_phone: newLoan.borrowerPhone,
+          loan_date: newLoan.loanDate.toISOString(),
+          expected_return_date: newLoan.expectedReturnDate.toISOString(),
+          actual_return_date: newLoan.actualReturnDate?.toISOString(),
+          quantity: newLoan.quantity,
+          status: newLoan.status,
+          notes: newLoan.notes,
+        }]);
+
+      if (error) throw error;
+      toast.success('Préstamo registrado exitosamente');
+    } catch (error) {
+      console.error('Error al agregar préstamo:', error);
+      toast.error('Error al registrar préstamo');
+    }
   };
 
-  const handleUpdateLoan = (updatedLoan: Loan) => {
-    const updatedLoans = loans.map((loan) =>
-      loan.id === updatedLoan.id ? updatedLoan : loan
-    );
-    setLoans(updatedLoans);
-    localStorage.setItem('loans', JSON.stringify(updatedLoans));
-    toast.success('Préstamo actualizado exitosamente');
+  const handleUpdateLoan = async (updatedLoan: Loan) => {
+    try {
+      // Convertir de camelCase a snake_case
+      const { error } = await supabase
+        .from('loans')
+        .update({
+          instrument_id: updatedLoan.instrumentId,
+          instrument_name: updatedLoan.instrumentName,
+          borrower_name: updatedLoan.borrowerName,
+          borrower_email: updatedLoan.borrowerEmail,
+          borrower_phone: updatedLoan.borrowerPhone,
+          loan_date: updatedLoan.loanDate.toISOString(),
+          expected_return_date: updatedLoan.expectedReturnDate.toISOString(),
+          actual_return_date: updatedLoan.actualReturnDate?.toISOString(),
+          quantity: updatedLoan.quantity,
+          status: updatedLoan.status,
+          notes: updatedLoan.notes,
+        })
+        .eq('id', updatedLoan.id);
+
+      if (error) throw error;
+      toast.success('Préstamo actualizado exitosamente');
+    } catch (error) {
+      console.error('Error al actualizar préstamo:', error);
+      toast.error('Error al actualizar préstamo');
+    }
   };
 
-  const handleDeleteLoan = (id: string) => {
-    setLoans(loans.filter((loan) => loan.id !== id));
+  const handleDeleteLoan = async (id: string) => {
+    try {
+      const { error } = await supabase
+        .from('loans')
+        .delete()
+        .eq('id', id);
+
+      if (error) throw error;
+      toast.success('Préstamo eliminado exitosamente');
+    } catch (error) {
+      console.error('Error al eliminar préstamo:', error);
+      toast.error('Error al eliminar préstamo');
+    }
   };
 
   const handleImportLoans = async (file: File) => {
     try {
       const importedLoans = await importLoans(file);
-      setLoans([...loans, ...importedLoans]);
+
+      // Convertir a formato Supabase
+      const loansToInsert = importedLoans.map((loan) => ({
+        instrument_id: loan.instrumentId,
+        instrument_name: loan.instrumentName,
+        borrower_name: loan.borrowerName,
+        borrower_email: loan.borrowerEmail,
+        borrower_phone: loan.borrowerPhone,
+        loan_date: loan.loanDate.toISOString(),
+        expected_return_date: loan.expectedReturnDate.toISOString(),
+        actual_return_date: loan.actualReturnDate?.toISOString(),
+        quantity: loan.quantity,
+        status: loan.status,
+        notes: loan.notes,
+      }));
+
+      const { error } = await supabase
+        .from('loans')
+        .insert(loansToInsert);
+
+      if (error) throw error;
       toast.success(`${importedLoans.length} préstamos importados correctamente`);
     } catch (error) {
       toast.error('Error al importar el archivo. Verifica el formato.');
