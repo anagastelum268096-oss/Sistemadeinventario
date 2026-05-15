@@ -60,7 +60,7 @@ export function Groups() {
           email: p.email,
           phone: p.phone,
           role: p.role,
-          groups: p.groups || [],
+          groups: p.group_ids || [],
           age: p.age,
           address: p.address,
           career: p.career,
@@ -82,7 +82,7 @@ export function Groups() {
           email: p.email,
           phone: p.phone,
           role: p.role,
-          groups: p.groups || [],
+          groups: p.group_ids || [],
           age: p.age,
           address: p.address,
           career: p.career,
@@ -187,7 +187,7 @@ export function Groups() {
           email: person.email,
           phone: person.phone,
           role: person.role,
-          groups: person.groups || [],
+          group_ids: person.groups || [],
           age: person.age,
           address: person.address,
           career: person.career,
@@ -227,7 +227,7 @@ export function Groups() {
           email: updated.email,
           phone: updated.phone,
           role: updated.role,
-          groups: updated.groups || [],
+          group_ids: updated.groups || [],
           age: updated.age,
           address: updated.address,
           career: updated.career,
@@ -339,7 +339,7 @@ export function Groups() {
                   email: '',
                   phone: '',
                   role: 'teacher',
-                  groups: [],
+                  group_ids: [],
                 }])
                 .select()
                 .single();
@@ -378,8 +378,7 @@ export function Groups() {
         }`
       );
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Error al importar el archivo. Verifica el formato.';
-      toast.error(errorMessage);
+      toast.error('Error al importar el archivo. Verifica el formato.');
       console.error(error);
     }
   };
@@ -394,38 +393,20 @@ export function Groups() {
         email: teacher.email,
         phone: teacher.phone,
         role: 'teacher',
-        groups: teacher.groups || [],
+        group_ids: teacher.groups || [],
         age: teacher.age,
         address: teacher.address,
         career: teacher.career,
       }));
 
-      const { data: insertedTeachers, error } = await supabase
+      const { error } = await supabase
         .from('people')
-        .insert(teachersToInsert)
-        .select('*');
+        .insert(teachersToInsert);
 
       if (error) throw error;
-
-      if (insertedTeachers) {
-        const mapped = insertedTeachers.map((t: any) => ({
-          id: t.id,
-          name: t.name,
-          email: t.email,
-          phone: t.phone,
-          role: t.role,
-          groups: t.groups || [],
-          age: t.age,
-          address: t.address,
-          career: t.career,
-        }));
-        setTeachers((prev) => [...prev, ...mapped]);
-      }
-
       toast.success(`${importedTeachers.length} maestros importados correctamente`);
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Error al importar el archivo. Verifica el formato.';
-      toast.error(errorMessage);
+      toast.error('Error al importar el archivo. Verifica el formato.');
       console.error(error);
     }
   };
@@ -440,38 +421,20 @@ export function Groups() {
         email: student.email,
         phone: student.phone,
         role: 'student',
-        groups: student.groups || [],
+        group_ids: student.groups || [],
         age: student.age,
         address: student.address,
         career: student.career,
       }));
 
-      const { data: insertedStudents, error } = await supabase
+      const { error } = await supabase
         .from('people')
-        .insert(studentsToInsert)
-        .select('*');
+        .insert(studentsToInsert);
 
       if (error) throw error;
-
-      if (insertedStudents) {
-        const mapped = insertedStudents.map((p: any) => ({
-          id: p.id,
-          name: p.name,
-          email: p.email,
-          phone: p.phone,
-          role: p.role,
-          groups: p.groups || [],
-          age: p.age,
-          address: p.address,
-          career: p.career,
-        }));
-        setStudents((prev) => [...prev, ...mapped]);
-      }
-
       toast.success(`${importedStudents.length} alumnos importados correctamente`);
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Error al importar el archivo. Verifica el formato.';
-      toast.error(errorMessage);
+      toast.error('Error al importar el archivo. Verifica el formato.');
       console.error(error);
     }
   };

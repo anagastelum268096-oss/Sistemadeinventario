@@ -210,8 +210,7 @@ export function Loans() {
       if (error) throw error;
       toast.success(`${importedLoans.length} préstamos importados correctamente`);
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Error al importar el archivo. Verifica el formato.';
-      toast.error(errorMessage);
+      toast.error('Error al importar el archivo. Verifica el formato.');
       console.error(error);
     }
   };

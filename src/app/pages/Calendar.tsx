@@ -42,8 +42,15 @@ export function Calendar() {
         if (presError) throw presError;
 
         const loadedPres = (presData || []).map(pres => ({
-          ...pres,
-          date: new Date(pres.date)
+          id: pres.id,
+          title: pres.title,
+          groupIds: pres.group_ids || [],
+          date: new Date(pres.date),
+          time: pres.time,
+          location: pres.location,
+          description: pres.description,
+          groupDescriptions: pres.group_descriptions,
+          status: pres.status,
         })) as Presentation[];
 
         setPresentations(loadedPres.filter(p => p.title));
@@ -82,15 +89,32 @@ export function Calendar() {
   // Guardar nueva presentación en Supabase
   const handleAddPresentation = async (presentation: Omit<Presentation, 'id'>) => {
     try {
+      // Convertir de camelCase a snake_case para Supabase
+      const dbPresentation = {
+        title: presentation.title,
+        group_ids: presentation.groupIds,
+        date: presentation.date,
+        time: presentation.time,
+        location: presentation.location,
+        description: presentation.description,
+        group_descriptions: presentation.groupDescriptions,
+        status: presentation.status,
+      };
+
       const { data, error } = await supabase
         .from('presentations')
-        .insert([presentation])
+        .insert([dbPresentation])
         .select()
         .single();
 
       if (error) throw error;
 
-      const newPresentation = { ...data, date: new Date(data.date) } as Presentation;
+      const newPresentation = {
+        ...data,
+        date: new Date(data.date),
+        groupIds: data.group_ids,
+        groupDescriptions: data.group_descriptions,
+      } as Presentation;
       setPresentations(prev => [...prev, newPresentation]);
       toast.success("Presentación guardada exitosamente");
     } catch (error) {
@@ -102,9 +126,21 @@ export function Calendar() {
   // Actualizar presentación en Supabase
   const handleUpdatePresentation = async (id: string, updated: Omit<Presentation, 'id'>) => {
     try {
+      // Convertir de camelCase a snake_case para Supabase
+      const dbPresentation = {
+        title: updated.title,
+        group_ids: updated.groupIds,
+        date: updated.date,
+        time: updated.time,
+        location: updated.location,
+        description: updated.description,
+        group_descriptions: updated.groupDescriptions,
+        status: updated.status,
+      };
+
       const { error } = await supabase
         .from('presentations')
-        .update(updated)
+        .update(dbPresentation)
         .eq('id', id);
 
       if (error) throw error;
@@ -134,7 +170,7 @@ export function Calendar() {
   const handleImportPresentations = async (file: File) => {
     try {
       const importedPresentations = await importPresentations(file);
-      const processedPresentations: Array<Omit<Presentation, 'id'>> = [];
+      const processedPresentations: Presentation[] = [];
       const newGroups: Group[] = [];
       
       for (const pres of importedPresentations) {
@@ -168,81 +204,57 @@ export function Calendar() {
         }
         
         processedPresentations.push({
+          id: pres.id,
           title: pres.title,
           groupIds: groupIds,
           date: pres.date,
           location: pres.location,
           description: pres.description || '',
-          status: pres.status || 'Programada',
         });
       }
       
       // Guardar grupos nuevos en Supabase
-      let insertedNewGroups: Group[] = [];
       if (newGroups.length > 0) {
-        const dbGroups = newGroups.map((group) => ({
-          name: group.name,
-          type: group.type,
-          teacher_id: group.teacherId,
-          student_ids: group.studentIds,
-          color: group.color,
+        const dbGroups = newGroups.map(g => ({
+          id: g.id,
+          name: g.name,
+          type: g.type,
+          teacher_id: g.teacherId,
+          student_ids: g.studentIds,
+          color: g.color,
         }));
 
-        const { data: insertedGroups, error: groupsError } = await supabase
+        const { error: groupsError } = await supabase
           .from('groups')
-          .insert(dbGroups)
-          .select('id,name');
+          .insert(dbGroups);
 
         if (groupsError) throw groupsError;
-
-        const nameToId = new Map<string, string>(
-          (insertedGroups || []).map((group: any) => [group.name.toLowerCase(), group.id])
-        );
-
-        insertedNewGroups = newGroups.map((group) => ({
-          ...group,
-          id: nameToId.get(group.name.toLowerCase()) || group.id,
-        }));
-
-        setGroups(prev => [...prev, ...insertedNewGroups]);
-
-        processedPresentations.forEach((presentation) => {
-          presentation.groupIds = presentation.groupIds.map((groupId) => {
-            const tempGroup = newGroups.find((group) => group.id === groupId);
-            if (!tempGroup) return groupId;
-            return nameToId.get(tempGroup.name.toLowerCase()) || groupId;
-          });
-        });
+        setGroups(prev => [...prev, ...newGroups]);
       }
 
       // Guardar presentaciones en Supabase
-      const dbPresentations = processedPresentations.map((presentation) => ({
-        title: presentation.title,
-        group_ids: presentation.groupIds,
-        date: presentation.date,
-        location: presentation.location,
-        description: presentation.description,
-        status: presentation.status,
+      const dbPresentations = processedPresentations.map(p => ({
+        id: p.id,
+        title: p.title,
+        group_ids: p.groupIds,
+        date: p.date,
+        time: p.time,
+        location: p.location,
+        description: p.description,
+        group_descriptions: p.groupDescriptions,
+        status: p.status,
       }));
 
-      const { data: insertedPresentations, error: presError } = await supabase
+      const { error: presError } = await supabase
         .from('presentations')
-        .insert(dbPresentations)
-        .select('*');
+        .insert(dbPresentations);
 
       if (presError) throw presError;
-
-      const newSavedPresentations = (insertedPresentations || []).map((pres: any) => ({
-        ...pres,
-        date: new Date(pres.date),
-      })) as Presentation[];
-
-      setPresentations(prev => [...prev, ...newSavedPresentations]);
+      setPresentations(prev => [...prev, ...processedPresentations]);
       
-      toast.success(`${newSavedPresentations.length} presentaciones importadas correctamente`);
+      toast.success(`${processedPresentations.length} presentaciones importadas correctamente`);
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Error al importar el archivo. Verifica el formato.';
-      toast.error(errorMessage);
+      toast.error('Error al importar el archivo. Verifica el formato.');
       console.error(error);
     }
   };

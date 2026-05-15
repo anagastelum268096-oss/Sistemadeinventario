@@ -171,8 +171,7 @@ export function Categories() {
       if (error) throw error;
       toast.success(`${importedCategories.length} categorías importadas correctamente`);
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Error al importar el archivo. Verifica el formato.';
-      toast.error(errorMessage);
+      toast.error('Error al importar el archivo. Verifica el formato.');
       console.error(error);
     }
   };
@@ -191,8 +190,7 @@ export function Categories() {
       if (error) throw error;
       toast.success(`${importedTypes.length} tipos de grupo importados correctamente`);
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Error al importar el archivo. Verifica el formato.';
-      toast.error(errorMessage);
+      toast.error('Error al importar el archivo. Verifica el formato.');
       console.error(error);
     }
   };

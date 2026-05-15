@@ -119,7 +119,7 @@ export function TeacherPresentations() {
           email: p.email,
           phone: p.phone,
           role: p.role,
-          groups: p.groups || [],
+          groups: p.group_ids || [],
           age: p.age,
           address: p.address,
           career: p.career,

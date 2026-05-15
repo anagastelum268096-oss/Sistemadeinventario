@@ -43,8 +43,7 @@ export function InventoryHeader({
       onImportInstruments(importedInstruments);
       toast.success(`${importedInstruments.length} instrumentos importados correctamente`);
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Error al importar el archivo. Verifica el formato.';
-      toast.error(errorMessage);
+      toast.error('Error al importar el archivo. Verifica el formato.');
       console.error(error);
     }
   };
